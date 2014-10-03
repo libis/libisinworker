@@ -1,5 +1,9 @@
 package libisinworker;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
@@ -33,5 +37,13 @@ public class LibisinUtil {
             }
         }
         return tempFile;
+    }
+    
+    public String prettyPrintJson(String jsonString){
+        JsonParser parser = new JsonParser();
+        JsonObject json = parser.parse(jsonString).getAsJsonObject();
+        Gson gson = new GsonBuilder().setPrettyPrinting().create();
+        String prettyJson = gson.toJson(json);
+        return prettyJson;
     }
 }
