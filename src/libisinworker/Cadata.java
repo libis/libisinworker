@@ -22,22 +22,38 @@ import java.util.Properties;
  */
 public class Cadata {
 
-    public String getSetData(String setName, Properties caServerConfig, String bundle) throws MalformedURLException, IOException{
+    public String getSetData(String setName, Properties caServerConfig, String bundle, String setRecordsType) throws MalformedURLException, IOException{
         String tempFilePath = ""                          ;
         try {
             LibisinUtil libisinUtils = new LibisinUtil();
             ClientConfig config = new DefaultClientConfig();
             Client client = Client.create(config);
             client.addFilter(new HTTPBasicAuthFilter(caServerConfig.getProperty("ca_user_id"), caServerConfig.getProperty("ca_user_password")));             
-                                                
+
+            String endPoint = null;
+            switch(setRecordsType){
+                case "collecties":      
+                    endPoint = caServerConfig.getProperty("ca_collection_path");
+                break;                        
+                    
+                case "objecten":      
+                    endPoint = caServerConfig.getProperty("ca_object_path");
+                break;  
+                    
+                default:
+                    endPoint = caServerConfig.getProperty("ca_object_path"); //default endpoint is object
+                    
+                    
+            }                                       
+            
             String setSearch = "set:\""+ setName +"\"";
             String url = "http://" + caServerConfig.getProperty("ca_server") 
                     + "/" + caServerConfig.getProperty("ca_base_path") + "/" 
-                    + caServerConfig.getProperty("ca_object_path") 
+                    + endPoint
                     + "?q="+ URLEncoder.encode(setSearch, "UTF-8") +"&pretty=1&format=edit" ;                                       
             
             System.out.println("\nProcessing set "+ setName);
-            System.out.println(url);                             
+            System.out.println(url);                                                                   
             
             WebResource webResource = client.resource(url);                        
             ClientResponse response = webResource.type("application/json").post(ClientResponse.class, bundle);
