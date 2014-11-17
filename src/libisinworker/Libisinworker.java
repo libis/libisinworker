@@ -5,12 +5,12 @@ import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.QueueingConsumer;
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.util.Date;
 import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.json.simple.JSONArray;
-//import org.json.simple.JSONArray;
 import org.json.simple.JSONObject; 
 import org.json.simple.parser.JSONParser; 
 import org.json.simple.parser.ParseException;
@@ -24,7 +24,7 @@ public class Libisinworker {
     /**
      * @param args the command line arguments
      */
-    public static void main(String[] args) throws IOException, InterruptedException, ParseException {    
+    public static void main(String[] args) throws IOException, InterruptedException, ParseException, URISyntaxException {    
         
         
         Libisinworker worker = new Libisinworker();
@@ -67,25 +67,34 @@ public class Libisinworker {
             JSONArray setInfoBodyArray = (JSONArray) messageBodyobj.get("set_info");
             for(int i=0; i< setInfoBodyArray.size(); i++){                
                 JSONObject object = (JSONObject)setInfoBodyArray.get(i);
-                
+                                                
                 String mapping = object.get("mapping").toString();                              
                 String mappingFilePath = libisinUtils.writeTempFile("temp", "mappingrules.csv", mapping);
 
                 ////retrieve records from collectiveaccess
                 String tempFilePath = setData.getSetData(object.get("set_name").toString(),
-                        caServerConfig, object.get("bundle").toString()); 
+                        caServerConfig, object.get("bundle").toString(), object.get("record_type").toString()); 
 
                 ////send records to mapping service to map to omeka format               
-                String dmtMapResponse = dmtService.mapData(tempFilePath, mappingFilePath, dmtServiceConfig);                
+                String dmtMapResponse = dmtService.mapData(tempFilePath, mappingFilePath, dmtServiceConfig);
+                
                 JSONObject requestIdobj = (JSONObject) parser.parse(dmtMapResponse);
-                String dmtRequestId = requestIdobj.get("request_id").toString();
-				
+                String dmtRequestId = requestIdobj.get("request_id").toString();                
+
+                
                 ////fetch mapping result
-                String omekaData = dmtService.fetchOmekaDmt(dmtRequestId, dmtServiceConfig);    
-				
-                ////update records in omeka
-                omekaRecords.updateData(omekaData);   
+                String omekaData = dmtService.fetchOmekaDmt(dmtRequestId, dmtServiceConfig);      
+                
+                if(omekaData.length() > 0) 
+                    omekaRecords.updateData(omekaData, object.get("record_type").toString());                    
+                else
+                    System.out.println("Log: no data to update in omeka.");
+                                                                 
+                
+                //remove tempfile after use
+                
             }
+            //System.out.println(messageBodyobj);                                                   
         }
         
     }
@@ -96,7 +105,8 @@ public class Libisinworker {
         factory.setPort(Integer.parseInt(queuingServerConfig.getProperty("rmq_port")));
         factory.setUsername(queuingServerConfig.getProperty("rmq_id"));
         factory.setPassword(queuingServerConfig.getProperty("rmq_pwd"));
-        factory.setVirtualHost(queuingServerConfig.getProperty("rmq_vhost"));
+        //factory.setVirtualHost(queuingServerConfig.getProperty("rmq_vhost"));
+        factory.setVirtualHost("/");                    //temporary, remove it for production
         
         Connection connection = null;
         try {

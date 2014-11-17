@@ -3,12 +3,10 @@ package libisinworker;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.List;
+import java.net.URISyntaxException;
 import java.util.Properties;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
-import org.apache.http.NameValuePair;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
@@ -16,7 +14,6 @@ import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.entity.mime.MultipartEntityBuilder;
 import org.apache.http.entity.mime.content.FileBody;
 import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
 
 /**
@@ -25,22 +22,22 @@ import org.apache.http.util.EntityUtils;
  */
 public class DmtService {
     
-    public String mapData(String records, String mappings, Properties dmtServiceConfig) throws IOException{
+    public String mapData(String records, String mappings, Properties dmtServiceConfig) throws IOException, URISyntaxException{
         String tempFilePath = "";
 
         File recordFile = new File(records);
         File mappingFile = new File(mappings);
+        
+        URIBuilder urlBuilder = new URIBuilder();
+        urlBuilder.setScheme("http").setHost(dmtServiceConfig.getProperty("dmt_url_base")).setPath("/"+ dmtServiceConfig.getProperty("url_transform"));
+        URI uri = urlBuilder.build();     
            
         HttpClient httpclient = new DefaultHttpClient();
-        HttpPost httppost = new HttpPost("http://192.168.56.101/euInside_new/dmt.php/DataMapping/Libis/data_tansfer/Transform");
-
-        List <NameValuePair> params = new ArrayList<NameValuePair>();
-        params.add(new BasicNameValuePair("sourceFormat", "CAJSON"));
-        params.add(new BasicNameValuePair("targetFormat", "OMJSON"));
+        HttpPost httppost = new HttpPost(uri);
 
         MultipartEntityBuilder builder = MultipartEntityBuilder.create();        
-        builder.addTextBody("sourceFormat", "CAJSON"); 
-        builder.addTextBody("targetFormat", "OMJSON"); 
+        builder.addTextBody("sourceFormat", dmtServiceConfig.getProperty("source_format")); 
+        builder.addTextBody("targetFormat", dmtServiceConfig.getProperty("target_format")); 
         builder.addPart("record", new FileBody(recordFile)); 
         builder.addPart("mappingRulesFile", new FileBody(mappingFile)); 
         HttpEntity entity = builder.build();
@@ -55,7 +52,7 @@ public class DmtService {
     }
     
     public String fetchOmekaDmt(String dmtRequestId, Properties dmtServiceConfig){
-        String responseString = "";
+        String responseString = null;
 
 	try {
  
@@ -76,5 +73,22 @@ public class DmtService {
         
         return responseString;
     }
+    
+    //NOTE1: If "Object" (PUT,omeka:item_type:name,"Object") is not given throw an error, if given use this as type_id. Search item types for this paticular name.
+    //NOTE2: Following element should be used to check if a collectiveaccess record exists.
+//    			"text":"9337",;
+//			"element_set":{
+//				"id":3,
+//				"url":"http:\/\/192.168.56.101\/omeka\/api\/element_sets\/3",
+//				"name":"Item Type Metadata",
+//				"resource":"element_sets"
+//			},
+//			"element":{
+//				"id":252,
+//				"url":"http:\/\/192.168.56.101\/omeka\/api\/elements\/252",
+//				"name":"object_id",
+//				"resource":"elements"
+//			}
+    
     
 }

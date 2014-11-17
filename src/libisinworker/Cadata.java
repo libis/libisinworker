@@ -33,17 +33,27 @@ public class Cadata {
             String endPoint = null;
             switch(setRecordsType){
                 case "collecties":      
+                case "collections":      
                     endPoint = caServerConfig.getProperty("ca_collection_path");
                 break;                        
                     
-                case "objecten":      
+                case "objecten":   
+                case "objects":                    
                     endPoint = caServerConfig.getProperty("ca_object_path");
                 break;  
-                    
-                default:
-                    endPoint = caServerConfig.getProperty("ca_object_path"); //default endpoint is object
-                    
-                    
+
+                case "entiteiten":   
+                case "entities":                    
+                    endPoint = caServerConfig.getProperty("ca_entity_path");
+                break;                      
+
+                case "gebeurtenissen":   
+                case "occurrences":                    
+                    endPoint = caServerConfig.getProperty("ca_occurrence_path");
+                break;                        
+                                                            
+                default:    /* Default endpoint is object  */
+                    endPoint = caServerConfig.getProperty("ca_object_path"); 
             }                                       
             
             String setSearch = "set:\""+ setName +"\"";
