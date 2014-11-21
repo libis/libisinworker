@@ -5,8 +5,11 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Properties;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
+import org.apache.http.ParseException;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
@@ -21,6 +24,7 @@ import org.apache.http.util.EntityUtils;
  * @author NaeemM
  */
 public class DmtService {
+    public Logger requestLog;
     
     public String mapData(String records, String mappings, Properties dmtServiceConfig) throws IOException, URISyntaxException{
         String tempFilePath = "";
@@ -30,11 +34,12 @@ public class DmtService {
         
         URIBuilder urlBuilder = new URIBuilder();
         urlBuilder.setScheme("http").setHost(dmtServiceConfig.getProperty("dmt_url_base")).setPath("/"+ dmtServiceConfig.getProperty("url_transform"));
-        URI uri = urlBuilder.build();     
-           
+        URI uri = urlBuilder.build();                
         HttpClient httpclient = new DefaultHttpClient();
         HttpPost httppost = new HttpPost(uri);
 
+        this.requestLog.log(Level.INFO, "DMT mapping request url: {0}", uri);
+        
         MultipartEntityBuilder builder = MultipartEntityBuilder.create();        
         builder.addTextBody("sourceFormat", dmtServiceConfig.getProperty("source_format")); 
         builder.addTextBody("targetFormat", dmtServiceConfig.getProperty("target_format")); 
@@ -55,40 +60,25 @@ public class DmtService {
         String responseString = null;
 
 	try {
- 
             URIBuilder builder = new URIBuilder();
             builder.setScheme("http").setHost(dmtServiceConfig.getProperty("dmt_url_base")).setPath("/"+ dmtServiceConfig.getProperty("url_fetch_record"))
                 .setParameter("request_id", dmtRequestId);
             URI uri = builder.build();                       
             HttpGet httpget = new HttpGet(uri);
             
+            this.requestLog.log(Level.INFO, "DMT fetch request url: {0}", uri);
+            
             HttpClient httpclient = new DefaultHttpClient();
             HttpResponse response = httpclient.execute(httpget); 
             HttpEntity entity = response.getEntity();
             responseString = EntityUtils.toString(entity, "UTF-8");
-         
-	  } catch (Exception e) {
-		e.printStackTrace();
+            
+	  } catch (URISyntaxException | IOException | ParseException e) {
+                this.requestLog.log(Level.SEVERE, "DMT fetch requst exception: {0}", e.getMessage());
+                return null;
 	  }        
         
         return responseString;
     }
-    
-    //NOTE1: If "Object" (PUT,omeka:item_type:name,"Object") is not given throw an error, if given use this as type_id. Search item types for this paticular name.
-    //NOTE2: Following element should be used to check if a collectiveaccess record exists.
-//    			"text":"9337",;
-//			"element_set":{
-//				"id":3,
-//				"url":"http:\/\/192.168.56.101\/omeka\/api\/element_sets\/3",
-//				"name":"Item Type Metadata",
-//				"resource":"element_sets"
-//			},
-//			"element":{
-//				"id":252,
-//				"url":"http:\/\/192.168.56.101\/omeka\/api\/elements\/252",
-//				"name":"object_id",
-//				"resource":"elements"
-//			}
-    
-    
+        
 }

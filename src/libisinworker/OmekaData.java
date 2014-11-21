@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -36,6 +35,7 @@ public class OmekaData {
     
     private final Properties omekaServerConfig;
     private final LibisinUtil libisinUtils;
+    public  Logger requestLog;
     
     
     public OmekaData(Properties omekaServerConfig){
@@ -43,25 +43,28 @@ public class OmekaData {
         this.libisinUtils = new LibisinUtil();
     }
         
-    public String updateData(String records, String setRecordsType) throws IOException{
+    public String pushDataToOmeka(String records, String setRecordsType, String requestDirectory, String setName) throws IOException{
         
-        try {
-            JSONParser parser = new JSONParser();
+        try {                       
+            JSONParser parser = new JSONParser();                       
             JSONArray messageBodyobj = (JSONArray) parser.parse(records);
             String type_id = null;
             
-            libisinUtils.writeTempFile("dmtomeka", ".json", records);            //TBRemoved
-            JSONObject elements = this.getElements(null);
+            libisinUtils.writeFile(requestDirectory + "/" + setName + "_dmtoutput.json",records);            
             
+            JSONObject elements = this.getElements(null);       //WHEN REPLACED WITH NEW DESIGN, THIS WILL NOT BE NEEDED
 
-            System.out.println("Started at: " + new Timestamp(new java.util.Date().getTime()));
-            System.out.println("Total records: " + messageBodyobj.size() + "\n");
+            this.requestLog.log(Level.INFO, "Total records: {0}", messageBodyobj.size());
+            System.out.println("-->Total records: " + messageBodyobj.size());
             
             for(int i=0; i< messageBodyobj.size(); i++){ 
+                System.out.println("--->Processing record: " + (i+1));
+                this.requestLog.log(Level.INFO, "Processing record: {0}", (i+1));
                 JSONObject object = (JSONObject)messageBodyobj.get(i);  
                                 
                 Boolean isValidRecord = false;
                 String urlType = null;
+                this.requestLog.log(Level.INFO, "record Type: {0}", setRecordsType);                
                 switch(setRecordsType){
                     /*  For type 'collection' a record is valid if it contains value for 
                         'collection::dc:title' field. Unlike 'objects', for 'collection' type 
@@ -102,15 +105,13 @@ public class OmekaData {
                                 JSONObject itemTypes = this.getItemTypes(null);                                
                                 if(itemTypes.get(object.get("item_type").toString()) != null)
                                 {
-                                    //System.out.println("Item Type ("+ object.get("item_type") +") Found : " + itemTypes.get(object.get("item_type")).toString());
+                                    this.requestLog.log(Level.INFO, "Item type: '{0}' Found", object.get("item_type")); 
+                                    this.requestLog.log(Level.INFO, "Item type id: {0}", itemTypes.get(object.get("item_type")).toString()); 
                                     type_id = itemTypes.get(object.get("item_type")).toString();                               
                                     isValidRecord = true;
                                 }
                                 else
-                                {
-                                    System.out.println("Item Type ("+ object.get("item_type") +") not Found.");
-                                    //log that item type was not found.
-                                }                                
+                                    this.requestLog.log(Level.INFO, "Item type( {0}) not Found", object.get("item_type"));                             
                             }
                             else
                                 isValidRecord = true;                                                                                                                   
@@ -122,42 +123,57 @@ public class OmekaData {
                 }                
                 
                 if(isValidRecord == false){
-                    System.out.println("Invalid record. No further processing for this record.");
+                    this.requestLog.log(Level.SEVERE, "Invalid record. No further processing for this record");
+                    System.out.println("---->Invalid record.");                    
                     break;
                 }                    
-                else
-                    System.out.println("Valid record.");                    
+                else{
+                    System.out.println("---->Valid record.");
+                    this.requestLog.log(Level.SEVERE, "Valid record");
+                }
+                    
 
                 /*  Process each record. */
-                System.out.println("Processing: " + (i+1));
-                List responeList = this.processRecords(object, elements, type_id); 
+                //System.out.println("---->Processing record: " + (i+1));                 
+                this.requestLog.log(Level.INFO, "Record type: {0}", urlType);
                 
+                List responeList = this.processRecords(object, elements, type_id);                 
                 if(responeList.size() == 2 && responeList.get(0) != null && responeList.get(1) != null){                    
                     String requestType = responeList.get(0).toString();
                     JSONObject omekaObject = (JSONObject)responeList.get(1);
-                    
-                    System.out.println("Record type: " + urlType);
-                    System.out.println(omekaObject.toString());
-
+                                         
+                    this.requestLog.log(Level.INFO, "Omeka operation type: {0}", requestType);
+                    boolean success = false;
                     switch(requestType){
                         case "ADD":             
-                            System.out.println("Add " + urlType);
-                            this.addItem(omekaObject, urlType);                        
+                            System.out.println("---->Omeka Operation type: Add");
+                            success = this.addItem(omekaObject, urlType);                        
                             break;
 
                         case "UPDATE":
-                            System.out.println("Update " + urlType);
-                            this.updateItem(omekaObject, urlType);
+                            System.out.println("---->Omeka Operation type: Update");
+                            success = this.updateItem(omekaObject, urlType);                                
                             break;
-                    }                      
+                    } 
+                    
+                    if(success == true){
+                        System.out.println("---->"+ requestType +" successful");  
+                        this.requestLog.log(Level.INFO, "--{0} successful", requestType);
+                    }
+                    else{
+                        System.out.println("---->"+ requestType +" failed");  
+                        this.requestLog.log(Level.INFO, "--{0} failed", requestType);
+                    }                    
+                    
                 }
                 else{
-                    System.out.println("Processing failed for record number: " + i+1);                                        
+                    System.out.println("Processing failed for record number: " + i+1);
+                    this.requestLog.log(Level.SEVERE, "Processing failed for record number: {0}", (i+1)); 
                 }                
-                System.out.println("----------------");
+
             }
             
-            System.out.println("Finished at: " + new Timestamp(new java.util.Date().getTime()));
+            //System.out.println("Finished at: " + new Timestamp(new java.util.Date().getTime()));
             return "";
         } catch (ParseException ex) {
             Logger.getLogger(OmekaData.class.getName()).log(Level.SEVERE, null, ex);
@@ -207,7 +223,8 @@ public class OmekaData {
                     elementIdentifier = elementObject.get("id").toString();                                        
             }
             else{
-                //log and return
+                System.out.println("Element "+this.omekaServerConfig.getProperty("object_identifier")+
+                        " for type "+ type_id+" is not found.");   
                 return null;            
             }                
         }
@@ -234,7 +251,7 @@ public class OmekaData {
             
             /// find elements from correct name space. Element name should contain namespace, that is ':'.
             if(elementName.contains(":")){
-                String[] splitName = elementName.split(":"); 
+                String[] splitName = elementName.split(":");                 
                 if(this.omekaServerConfig.getProperty(splitName[0]) != null && !splitName[1].equals(this.omekaServerConfig.getProperty("object_identifier"))){
                     JSONObject elementSetObject = this.getElementSetByName(this.omekaServerConfig.getProperty(splitName[0]));
                     
@@ -285,7 +302,6 @@ public class OmekaData {
                 JSONArray elementArray = (JSONArray) elements.get(elementName);                
                 String elementId  = elementArray.get(0).toString();
                 String elementSetId  = elementArray.get(1).toString();
-                
                 
                 
                 // If non collection record and object_id is available in the record received from dmt service
@@ -515,55 +531,74 @@ public class OmekaData {
         return element;
     }    
     
-    public String addItem(JSONObject object, String urlType) throws IOException{
+    public boolean addItem(JSONObject object, String urlType){
         if(urlType == null){
             System.out.println("Url type not provided. Add item quite.");
-            return null;
-        }
-        URI uri = this.prepareRequst(urlType, null, true, null);
-        HttpPost httppost = new HttpPost(uri);
-        System.out.println(uri);
+            this.requestLog.log(Level.SEVERE, "Url type not provided. Update item quite");
+            return false;
+        }        
         
-        HttpClient httpclient = new DefaultHttpClient();
-        httppost.setHeader("Content-type", "application/json");
-        httppost.setEntity(new StringEntity(object.toString()));
-
-        HttpResponse response = httpclient.execute(httppost);       
-
-        HttpEntity entityResponse= response.getEntity();
-        String responseString = EntityUtils.toString(entityResponse, "UTF-8");
-       
-        System.out.println(responseString);
-           
-        return "";
+        try {
+            URI uri = this.prepareRequst(urlType, null, true, null);
+            HttpPost httppost = new HttpPost(uri);
+            HttpClient httpclient = new DefaultHttpClient();
+            httppost.setHeader("Content-type", "application/json");
+            httppost.setEntity(new StringEntity(object.toString()));
+            
+            this.requestLog.log(Level.INFO, "Add url: {0}", uri);
+            
+            HttpResponse response = httpclient.execute(httppost);
+            HttpEntity entityResponse= response.getEntity();
+            String responseString = EntityUtils.toString(entityResponse, "UTF-8");
+            System.out.println("---->Add response: " + responseString);
+            this.requestLog.log(Level.INFO, "Add response: {0}", responseString);            
+            return true;
+            
+        } catch (UnsupportedEncodingException ex) {
+            this.requestLog.log(Level.SEVERE, "Add operation Exception: {0}", ex.getMessage());
+            return false;
+        } catch (IOException ex) {
+            this.requestLog.log(Level.SEVERE, "Add operation Exception: {0}", ex.getMessage());
+            return false;
+        }
     }
-    public String updateItem(JSONObject object, String urlType){
+    public boolean updateItem(JSONObject object, String urlType){
         if(urlType == null){
             System.out.println("Url type not provided. Update item quite.");
-            return null;
+            this.requestLog.log(Level.SEVERE, "Url type not provided. Update item quite");
+            return false;
         }        
         try {
-            URI uri = this.prepareRequst(urlType, object.get("id").toString(), true, null);
-            System.out.println(uri);
+            URI uri = this.prepareRequst(urlType, object.get("id").toString(), true, null);                                    
             HttpPut httpput = new HttpPut(uri);
-
             HttpClient httpclient = new DefaultHttpClient();
             httpput.setHeader("Content-type", "application/json");
             httpput.setEntity(new StringEntity(object.toString()));
             
-            HttpResponse response = httpclient.execute(httpput);
+            this.requestLog.log(Level.INFO, "--Update url: {0}", uri);
+            this.requestLog.log(Level.INFO, "--Update request Body: {0}", object.toString());
             
+            HttpResponse response = httpclient.execute(httpput);                               
             HttpEntity entityResponse= response.getEntity();
             String responseString = EntityUtils.toString(entityResponse, "UTF-8");
-                        
-            System.out.println(responseString);
-                        
+            this.requestLog.log(Level.INFO, "--Update response: {0}", responseString);            
+            if(response.getStatusLine().getStatusCode() != 200){
+                System.out.println("---->Update operation failed: " + responseString);
+                this.requestLog.log(Level.SEVERE, "--Update operation failed(Message): {0}", responseString);
+                this.requestLog.log(Level.SEVERE, "--Update operation failed(Code): {0}", response.getStatusLine().getStatusCode());
+                return false;
+            }            
+            
+            return true;
+            
         } catch (UnsupportedEncodingException ex) {
-            Logger.getLogger(OmekaData.class.getName()).log(Level.SEVERE, null, ex);
+            this.requestLog.log(Level.SEVERE, "--Update operation Exception: {0}", ex.getMessage());
+            return false;
+            
         } catch (IOException ex) {
-            Logger.getLogger(OmekaData.class.getName()).log(Level.SEVERE, null, ex);
+            this.requestLog.log(Level.SEVERE, "--Update operation Exception: {0}", ex.getMessage());
+            return false;
         }
-        return "";
     }
     
     public String getItem(String itemId){
