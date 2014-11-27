@@ -75,8 +75,10 @@ public class Libisinworker {
                 serverLog.log(Level.INFO, "Error in creating request directory: {0}, request will not be processed", requestDirectory);
                 continue;
             }            
-                       
-            Logger requestLog = libisinUtils.createLogger(requestDirectory + "/request.log", setData.getClass().getName());
+            
+            String reportFile = requestDirectory+ "/report.txt";
+            String requestLogFile = requestDirectory + "/request_log.txt";
+            Logger requestLog = libisinUtils.createLogger(requestLogFile, setData.getClass().getName());
             omekaRecords.requestLog = requestLog;
             dmtService.requestLog = requestLog;
             setData.requestLog = requestLog;
@@ -99,12 +101,12 @@ public class Libisinworker {
             JSONArray setInfoBodyArray = (JSONArray) messageBodyobj.get("set_info");
             for(int i=0; i< setInfoBodyArray.size(); i++){
                 
-                //stop firewall                
-                //libisinUtils.executeCommand("sudo /etc/init.d/firewall stop", serverLog);
+                /* Stop firewall    */
+                libisinUtils.executeCommand("sudo /etc/init.d/firewall stop", serverLog);
                                 
                 JSONObject object = (JSONObject)setInfoBodyArray.get(i);                                                
                 String mappingRules = object.get("mapping").toString();                              
-                String mappingFilePath = libisinUtils.writeFile(requestDirectory + "/mappingrules.csv", mappingRules);
+                String mappingFilePath = libisinUtils.writeFile(requestDirectory + "/mappingrules.csv", mappingRules, false);
                 serverLog.log(Level.INFO, "Mapping file: {0}", mappingFilePath);
                                 
                 ////retrieve records from collectiveaccess
@@ -131,8 +133,17 @@ public class Libisinworker {
                 String omekaData = dmtService.fetchOmekaDmt(dmtRequestId, dmtServiceConfig);      
                                                 
                 if(omekaData.length() > 0) {
-                    omekaRecords.pushDataToOmeka(omekaData, object.get("record_type").toString(), requestDirectory, object.get("set_name").toString());  
                     requestLog.log(Level.INFO, "DMT fetch successfull. Length of omeka data to add/update: {0} characters", omekaData.length());
+                    boolean omekaSuccess = omekaRecords.pushDataToOmeka(omekaData, object.get("record_type").toString(), 
+                            requestDirectory, object.get("set_name").toString());
+                    if(omekaSuccess == true){
+                        requestLog.log(Level.INFO, "Records pushed to Omeka successfully");    
+                        worker.prepareReport(object.get("set_name").toString(), omekaRecords,reportFile , libisinUtils);
+                    }
+                    else
+                        requestLog.log(Level.INFO, "Records pushing to Omeka failed");    
+                        
+                    
                 }                    
                 else{
                     System.out.println("No data to add/update in omeka.");
@@ -141,11 +152,21 @@ public class Libisinworker {
                 }                                                                                                                   
             }
             System.out.println("Request processing finished at: " + new Timestamp(new java.util.Date().getTime()));
-            libisinUtils.sendEmail(libisinWorkerConfig, userObj.get("email").toString(), userObj.get("name").toString(), requestDirectory+ "/request.log", requestLog);
+            libisinUtils.sendEmail(libisinWorkerConfig, userObj.get("email").toString(), userObj.get("name").toString(), 
+                    requestLogFile,  requestDirectory+ "/report.txt", requestLog);
             System.out.println("---------------------------+\n");
             libisinUtils.destroyLogger(requestLog);                                          
         }        
 
+    }
+    
+    public void prepareReport(String setName, OmekaData omekaRecord, String reportFile, LibisinUtil libisinUtils){
+        String report = "Set Name: " + setName + ", Total Records: " + omekaRecord.totalRecords + "\n" 
+                + "Valid Records: " + omekaRecord.validRecords + ", Invalid Records: "+ omekaRecord.invalidRecords +"\n" 
+                + "Added Records: " + omekaRecord.addedRecords + ", Updated Records: "+ omekaRecord.updatedRecords 
+                +", Failed Records: " + omekaRecord.failedRecords +"\n"
+                + "---------\n";
+        libisinUtils.writeFile(reportFile, report, true);        
     }
     
     public Connection connectQueuingServer(Properties queuingServerConfig, Logger serverLog){        
@@ -155,7 +176,6 @@ public class Libisinworker {
         factory.setUsername(queuingServerConfig.getProperty("rmq_id"));
         factory.setPassword(queuingServerConfig.getProperty("rmq_pwd"));
         factory.setVirtualHost(queuingServerConfig.getProperty("rmq_vhost"));
-        //factory.setVirtualHost("/");                    //temporary, remove it for production
         
         Connection connection = null;
         try {

@@ -77,7 +77,7 @@ public class Cadata {
                 this.requestLog.log(Level.SEVERE, "Collective Access record retrieval failed(Code): {0}", response.getStatus()); 
                 return null;
             }                      
-            return libisinUtils.writeFile(requestDirectory + "/" +setName+".json", output);   
+            return libisinUtils.writeFile(requestDirectory + "/" +setName+".json", output, false);   
 
         } catch (UnsupportedEncodingException | RuntimeException e) {
             this.requestLog.log(Level.SEVERE, "Collective Access record retrieval exception: {0}", e.getMessage()); 
@@ -85,6 +85,5 @@ public class Cadata {
         }
         
     }
-    
-   
+       
 }

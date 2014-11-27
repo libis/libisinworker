@@ -38,11 +38,11 @@ import javax.mail.internet.MimeMultipart;
  */
 public class LibisinUtil {
          
-    public String writeFile(String filePath, String content){       
+    public String writeFile(String filePath, String content, boolean append){       
         try {
             //System.out.println("Write file: " + filePath);
             File file = new File(filePath);
-            FileWriter fwContent = new FileWriter(file.getAbsoluteFile());
+            FileWriter fwContent = new FileWriter(file.getAbsoluteFile(), append);
             BufferedWriter bwContent = new BufferedWriter(fwContent);
             bwContent.write(content);
             bwContent.close();
@@ -118,7 +118,7 @@ public class LibisinUtil {
         return prettyJson;
     }
     
-    public void sendEmail(Properties config, String toEmail, String toName, String filetoAttach, Logger requestLog){                    
+    public void sendEmail(Properties config, String toEmail, String toName, String fileLog, String fileReport, Logger requestLog){                    
         try
         {   
             String messageText = "Beste "+ toName + ",\n" 
@@ -139,12 +139,27 @@ public class LibisinUtil {
             Multipart multipart = new MimeMultipart();
             multipart.addBodyPart(messageBodyPart);
             
-            messageBodyPart = new MimeBodyPart();
-            DataSource source = new FileDataSource(filetoAttach);            
-            messageBodyPart.setDataHandler(new DataHandler(source));
-            messageBodyPart.setFileName("Omeka_Integation_Report.log");
-            multipart.addBodyPart(messageBodyPart);  
-            msg.setContent(multipart);
+            /* Attach report file */
+            if(fileReport != null){
+                messageBodyPart = new MimeBodyPart();
+                DataSource reportSource = new FileDataSource(fileReport);            
+                messageBodyPart.setDataHandler(new DataHandler(reportSource));
+                messageBodyPart.setFileName("Omeka_Integation_Report.txt");
+                multipart.addBodyPart(messageBodyPart);  
+                msg.setContent(multipart);     
+                requestLog.log(Level.INFO, "Report file attached: {0}", fileReport);  
+            }
+            
+            /* Attach log file */
+            if(fileLog != null){
+                messageBodyPart = new MimeBodyPart();
+                DataSource logSource = new FileDataSource(fileLog);            
+                messageBodyPart.setDataHandler(new DataHandler(logSource));
+                messageBodyPart.setFileName("Omeka_Integation_Log.txt");
+                multipart.addBodyPart(messageBodyPart);  
+                msg.setContent(multipart);         
+                requestLog.log(Level.INFO, "Log file attached: {0}", fileLog);                
+            }            
             
             msg.setSentDate(new Date());
             msg.setRecipients(Message.RecipientType.TO, InternetAddress.parse(toEmail, false));
@@ -152,8 +167,7 @@ public class LibisinUtil {
             
             System.out.println("EMail Sent to '" + toName + "', at email: " + toEmail);
             requestLog.log(Level.INFO, "Email sent to: {0}", toName);
-            requestLog.log(Level.INFO, "Email sent at: {0}", toEmail);
-            requestLog.log(Level.INFO, "Email attachment: {0}", filetoAttach);
+            requestLog.log(Level.INFO, "Email sent at: {0}", toEmail);            
         }
         catch (MessagingException | UnsupportedEncodingException ex) {
             System.out.println("EMail could not be sent to '" + toName + "', at email: " + toEmail);
@@ -161,6 +175,17 @@ public class LibisinUtil {
             requestLog.log(Level.SEVERE, "Exception message: {0}", ex.getMessage());
         }    
         
+    }    
+    
+    public String capitalizeFirstLetter(String original){      
+    String[] wordArray = original.split(" ");
+    
+    StringBuilder sb = new StringBuilder();
+    for (String word : wordArray) {
+        sb.append(word.substring(0, 1).toUpperCase()).append(word.substring(1));
+        sb.append(" ");
+    }
+      return sb.toString().trim();
     }    
     
     public void executeCommand(String command, Logger serverLog){
