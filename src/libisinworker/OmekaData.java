@@ -35,7 +35,6 @@ public class OmekaData {
     
     private final Properties omekaServerConfig;
     private final LibisinUtil libisinUtils;
-    //private GeoLocation location;
     private List<GeoLocation> locations;
     private List<DigiTool> digitoolimages;
     public  Logger requestLog;
@@ -50,7 +49,6 @@ public class OmekaData {
     public OmekaData(Properties omekaServerConfig){
         this.omekaServerConfig = omekaServerConfig;       
         this.libisinUtils = new LibisinUtil();
-        //this.location = new GeoLocation();
         this.locations = new ArrayList<>();
         this.digitoolimages = new ArrayList<>();
     }
@@ -71,8 +69,6 @@ public class OmekaData {
             this.updatedRecords = 0;
             this.failedRecords = 0;
             
-            //JSONObject elements = this.getElements(null);       ***************//WHEN REPLACED WITH NEW DESIGN, THIS WILL NOT BE NEEDED
-
             this.requestLog.log(Level.INFO, "Total records: {0}", messageBodyobj.size());
             System.out.println("-->Total records: " + messageBodyobj.size());
             
@@ -408,10 +404,25 @@ public class OmekaData {
                 element.clear();
             }
                      
-        }            
+        } 
+        this.removeEmptyElements(object);
         responseList.add(object);        
         return responseList;
     }
+    
+    public JSONObject removeEmptyElements(JSONObject object){
+        JSONArray objectElementsArrayNew = new JSONArray();
+                
+        JSONArray objectElementsArray = (JSONArray) object.get("element_texts"); 
+        for (Object objectElement : objectElementsArray) {
+            JSONObject element = (JSONObject) objectElement;
+            if(!element.isEmpty())
+                objectElementsArrayNew.add(element);                
+        }
+        object.remove("element_texts");
+        object.put("element_texts", objectElementsArrayNew);
+        return object;
+    }    
     
     public List collectionExists(String collectionTitle){   
         List responseList = new ArrayList();
@@ -558,16 +569,25 @@ public class OmekaData {
             HttpPost httppost = new HttpPost(uri);
             HttpClient httpclient = new DefaultHttpClient();
             httppost.setHeader("Content-type", "application/json");
-            httppost.setEntity(new StringEntity(object.toString()));
+            httppost.setEntity(new StringEntity(object.toString(), "UTF-8"));
             
-            this.requestLog.log(Level.INFO, "Add operation url: {0}", uri);
+            this.requestLog.log(Level.INFO, "--Add operation url: {0}", uri);
+            this.requestLog.log(Level.INFO, "--Add operation request Body: {0}", object.toString()); 
             
             HttpResponse response = httpclient.execute(httppost);
             HttpEntity entityResponse= response.getEntity();
             String responseString = EntityUtils.toString(entityResponse, "UTF-8");
+                        
+            this.requestLog.log(Level.INFO, "--Add operation response code: {0}", response.getStatusLine().getStatusCode());
+            this.requestLog.log(Level.INFO, "--Add operation response: {0}", responseString);
             
-            this.requestLog.log(Level.INFO, "Add operation response: {0}", responseString);
-  
+            if(response.getStatusLine().getStatusCode() != 201){
+                System.out.println("---->Add operation failed: " + responseString);
+                this.requestLog.log(Level.SEVERE, "--Add operation failed(Message): {0}", responseString);
+                this.requestLog.log(Level.SEVERE, "--Add operation failed(Code): {0}", response.getStatusLine().getStatusCode());
+                return false;
+            }            
+            
             if(this.locations.size() > 0){
                 this.requestLog.log(Level.INFO, "Addig locations");                 
                 this.addLocation(responseString);                
@@ -577,7 +597,7 @@ public class OmekaData {
                 this.requestLog.log(Level.INFO, "Addig images"); 
                 this.addDigiToolImage(responseString);                                
             }            
-
+            
             return true;
             
         } catch ( UnsupportedEncodingException ex) {
@@ -600,7 +620,8 @@ public class OmekaData {
             HttpPut httpput = new HttpPut(uri);
             HttpClient httpclient = new DefaultHttpClient();
             httpput.setHeader("Content-type", "application/json");
-            httpput.setEntity(new StringEntity(object.toString()));
+            object.remove("id");
+            httpput.setEntity(new StringEntity(object.toString(), "UTF-8"));
             
             this.requestLog.log(Level.INFO, "--Update operation url: {0}", uri);
             this.requestLog.log(Level.INFO, "--Update operation request Body: {0}", object.toString());
@@ -813,10 +834,12 @@ public class OmekaData {
             HttpClient httpclient = new DefaultHttpClient();
             if(requestBody !=null && contentType != null){
                 httppost.setHeader("Content-type", contentType);
-                httppost.setEntity(new StringEntity(requestBody)); 
+                httppost.setEntity(new StringEntity(requestBody, "UTF-8")); 
                 this.requestLog.log(Level.INFO, "Add resource request body: {0}", requestBody);
             }            
             this.requestLog.log(Level.INFO, "Add resource url: {0}", uri);
+            
+            System.out.println("image add url:" + uri);
             
             return httpclient.execute(httppost);
             
@@ -933,18 +956,7 @@ public class OmekaData {
                         imageObj.put("label", digiToolImage.label);                    
                                         
                     if(imageObj.get("pid") != null){    
-/*                        
-                        //check if image already exists, only add if it does not exist
-                        Boolean imageExist = this.imageExists(imageObj.get("pid").toString());
-                        if(imageExist == null){
-                            this.requestLog.log(Level.SEVERE, "Error while image exists check for image; {}. Skip this image", imageObj.get("pid").toString());
-                            continue;
-                        }
-                        if(imageExist == true){
-                            this.requestLog.log(Level.SEVERE, "Image {0} already exists therefor skip", imageObj.get("pid").toString());
-                            continue;                            
-                        }
-*/                            
+  
                         // Image(pid) will be added for this item
                         HttpResponse response = this.addResource("digi_tool", null, true, null, imageObj.toString(), "application/json");                        
                         if(response != null){
@@ -952,23 +964,29 @@ public class OmekaData {
                             String responseString = EntityUtils.toString(entityResponse, "UTF-8");
                             this.requestLog.log(Level.INFO, "Add image response: {0}", responseString);                                    
 
-                            if(response.getStatusLine().getStatusCode() != 201){
-                                this.requestLog.log(Level.SEVERE, "--Add image faild (Message): {0}", responseString);
-                                this.requestLog.log(Level.SEVERE, "--Add image faild(Code): {0}", response.getStatusLine().getStatusCode());
-                                System.out.println("---->Add image faild: " + responseString);
-                            }
-                            else{
+                            if(response.getStatusLine().getStatusCode() == 201){
                                 this.requestLog.log(Level.SEVERE, "Image addedd successfully: {0}", responseString);                        
-                                System.out.println("---->Image ("+ imageObj.get("pid") +" ) added successfully: ");
-                            }                                
+                                System.out.println("---->Image ("+ imageObj.get("pid") +" ) added successfully: ");                                
+                            }
+                            else 
+                            {
+                                if(response.getStatusLine().getStatusCode() == 400 && this.parseImageAddResponse((JSONObject)parser.parse(responseString))){
+                                    this.requestLog.log(Level.INFO, "--Pid '{0}' already exists", imageObj.get("pid"));
+                                    System.out.println("---->Add image faild. Image already exists.");
+                                }
+                                else{
+                                    this.requestLog.log(Level.SEVERE, "--Add image faild (Message): {0}", responseString);
+                                    this.requestLog.log(Level.SEVERE, "--Add image faild(Code): {0}", response.getStatusLine().getStatusCode());
+                                    System.out.println("---->Add image faild: " + responseString);                                    
+                                }
+                            }                            
                         }
                         else
                             this.requestLog.log(Level.INFO, "Add image faild. Error in POST request to omeka digitoolurl");                         
                                                 
                     }
                     this.requestLog.log(Level.SEVERE, "Adding image failed. Pid missing");
-                }
-                
+                }                
             }
             else
                 this.requestLog.log(Level.SEVERE, "Adding image failed. Item id missing.");            
@@ -984,6 +1002,18 @@ public class OmekaData {
         this.digitoolimages.clear();
     }
     
+    public boolean parseImageAddResponse(JSONObject responseJson ){
+        if(responseJson.get("errors") != null){
+            JSONObject errorJSON = (JSONObject)responseJson.get("errors");
+            if(errorJSON.get("item_id") !=null){
+                if(errorJSON.get("item_id").toString().equals("Item already has this pid.")){
+                    return true;                           
+                }
+            }
+        }        
+        return false;
+    }
+    
     public void setDigiToolPid(String pidString){                
         if(pidString.length() > 0){            
             DigiTool image = new DigiTool();
@@ -995,28 +1025,7 @@ public class OmekaData {
         else
             this.requestLog.log(Level.SEVERE, "Invalid digitool pid given: {0}", pidString);
     }
-    
-    public Boolean imageExists(String pid){
-//        try {
-//            URI uri = this.prepareRequst("digi_tool", pid, false, null);
-//            HttpGet httpget = new HttpGet(uri);
-//            HttpClient httpclient = new DefaultHttpClient();
-//            HttpResponse response = httpclient.execute(httpget);
-//            HttpEntity entity = response.getEntity();
-//            
-//            JSONParser parser = new JSONParser();
-//            JSONObject messageBody = (JSONObject) parser.parse(EntityUtils.toString(entity, "UTF-8"));
-//            System.out.println(messageBody);
-//            
-//
-//
-//        } catch (ParseException | IOException ex) {
-//            this.requestLog.log(Level.SEVERE, "Pid exist check exception: {0}", ex.getMessage());
-//            return null;
-//        } 
-        return true;
-    }
-    
+        
     public URI prepareRequst(String apiType, String id, boolean useKey, Map<String,String> quereyParameters){
         URIBuilder builder = new URIBuilder();
         URI uri = null;
