@@ -45,22 +45,23 @@ public class OmekaData {
     public int validRecords;
     public int invalidRecords;
     
+    public JSONObject omekaElements;
+    
     
     public OmekaData(Properties omekaServerConfig){
         this.omekaServerConfig = omekaServerConfig;       
         this.libisinUtils = new LibisinUtil();
         this.locations = new ArrayList<>();
-        this.digitoolimages = new ArrayList<>();
+        this.digitoolimages = new ArrayList<>();                
     }
         
     public boolean pushDataToOmeka(String records, String setRecordsType, String requestDirectory, String setName) throws IOException{
         
-        try {                       
+        try {                                   
+            libisinUtils.writeFile(requestDirectory + "/" + setName + "_dmtoutput.json",records, false);
             JSONParser parser = new JSONParser();                       
             JSONArray messageBodyobj = (JSONArray) parser.parse(records);
-            String type_id = null;
-            
-            libisinUtils.writeFile(requestDirectory + "/" + setName + "_dmtoutput.json",records, false);            
+            String type_id = null;                        
             
             this.totalRecords = messageBodyobj.size();
             this.validRecords = 0;
@@ -116,17 +117,18 @@ public class OmekaData {
                             /*  Get type_name and type_id only once(i.e. for the first record) and reuse it
                                 for next records.
                             */
-                            if(type_id == null){
-                                JSONObject itemTypes = this.getItemTypes(null);                                
-                                if(itemTypes.get(object.get("item_type").toString()) != null)
-                                {
-                                    this.requestLog.log(Level.INFO, "Item type: '{0}' Found", object.get("item_type")); 
-                                    this.requestLog.log(Level.INFO, "Item type id: {0}", itemTypes.get(object.get("item_type")).toString()); 
-                                    type_id = itemTypes.get(object.get("item_type")).toString();                               
+                            if(type_id == null){                                
+                                if(this.omekaElements.containsKey(object.get("item_type").toString().toLowerCase())){
+                                    JSONObject itemTypeObject = (JSONObject)this.omekaElements.get(object.get("item_type").toString().toLowerCase());
+                                    type_id = itemTypeObject.get("type_id").toString();
                                     isValidRecord = true;
+                                    System.out.println("Item type '" + object.get("item_type") + "' exists with type id: "+ type_id);
+                                    this.requestLog.log(Level.INFO, "{0}", String.format("Item type '%s' exists with type id: %s", object.get("item_type"), type_id)); 
                                 }
-                                else
-                                    this.requestLog.log(Level.INFO, "Item type( {0}) not Found", object.get("item_type"));                             
+                                else{
+                                    System.out.println("Item type '" + object.get("item_type") + "' not Found.");
+                                    this.requestLog.log(Level.INFO, "Item type '{0}' not Found", object.get("item_type"));                             
+                                }                                                                   
                             }
                             else
                                 isValidRecord = true;                                                                                                                   
@@ -159,7 +161,7 @@ public class OmekaData {
                     JSONObject omekaObject = (JSONObject)responeList.get(1);
                                          
                     this.requestLog.log(Level.INFO, "Omeka operation type: {0}", requestType);
-                    
+                    System.out.println(omekaObject);
                     boolean success = false;
                     switch(requestType){
                         case "ADD":             
@@ -227,27 +229,13 @@ public class OmekaData {
         List responseList = new ArrayList();
         String objectIdentifier = libisinUtils.capitalizeFirstLetter(this.omekaServerConfig.getProperty("object_identifier"));
         String digitToolElement = libisinUtils.capitalizeFirstLetter(this.omekaServerConfig.getProperty("digitoolelement"));
+        
         /*  Type_id has values for all non collection types. */
         if(type_id != null){
             /*  Add item_type to omeka record.  */
-            JSONObject item_type = new JSONObject();
+            JSONObject item_type = new JSONObject();    
             item_type.put("id", type_id);
-            object.put("item_type", item_type); 
-            
-            //get identifier element id, by using type_id and identifier name (in this case 'object_id')
-            //this identifier will be used later(when processing object_id element) to see if an object
-            //with this identifier exists.
-            //JSONObject elementObject = this.getElementByName(type_id, this.omekaServerConfig.getProperty("object_identifier"));
-            JSONObject elementObject = this.getElementByName(type_id, objectIdentifier);
-            if(!elementObject.isEmpty() && elementObject.get("id") !=null){
-                this.requestLog.log(Level.INFO, "Type id found. {0}", elementObject.get("id").toString()); 
-            }
-            else{
-                System.out.println("Element "+this.omekaServerConfig.getProperty("object_identifier")+
-                        " for type "+ type_id+" is not found.");   
-                this.requestLog.log(Level.SEVERE, "Type id not found, therefore no further processing for this record"); 
-                return null;            
-            }                
+            object.put("item_type", item_type);                          
         }
         
         JSONArray objectElementsArray = (JSONArray) object.get("element_texts");                                         
@@ -259,7 +247,7 @@ public class OmekaData {
             
             String elementIdToAdd = null;
             String elementSetIdToAdd = null;
-                        
+            
             String[] parts = element.get("element").toString().split("::");
             
             if(parts.length > 1){
@@ -275,129 +263,142 @@ public class OmekaData {
 
                 /* Set geolocation values. These values will be used later once object has been added or updated. */
                 if(splitName[0].equals("geolocation") && libisinUtils.capitalizeFirstLetter(splitName[1]).equals("Address")){
+                    System.out.println("---->Processing geolocation");
+                    this.requestLog.log(Level.INFO, "---->Processing geolocation"); 
                     if(element.get("text") != null)                                                                             
                         this.setGeoLocation(element.get("text").toString());
                     else          
-                        this.requestLog.log(Level.SEVERE, "Geolocation value not given."); 
+                        this.requestLog.log(Level.SEVERE, "----->Geolocation value not given."); 
                     
                     element.clear();
                     continue;
-                }                
-                                                                                 
-                if(this.omekaServerConfig.getProperty(splitName[0]) != null ){ 
-                    JSONObject elementSetObject = this.getElementSetByName(this.omekaServerConfig.getProperty(splitName[0]));                                        
-                                       
-                    if(elementSetObject.get("id") != null){                                                
-                        String elementToFind = libisinUtils.capitalizeFirstLetter(splitName[1]);                                                
-                       
-                            /* Digitool urls */
-                        if(elementToFind.equals(digitToolElement))
-                        {
-                            this.requestLog.log(Level.INFO, "Processing digitool"); 
-                            if(element.get("text") != null)                                                                             
-                                this.setDigiToolPid(element.get("text").toString());
-                            else          
-                                this.requestLog.log(Level.SEVERE, "Digitool pid not given"); 
+                }        
 
-                            element.clear();
-                            continue;                                
-                        }
-                        
-                        JSONObject foundElement = this.getElementInSet(elementToFind, elementSetObject.get("id").toString());
-                        if(foundElement != null){
-                            elementIdToAdd = foundElement.get("id").toString();
-                            elementSetIdToAdd = elementSetObject.get("id").toString();
-                            this.requestLog.log(Level.INFO, "{0}", String.format("Element: '%s' found, Element id: %s, Element set id: %s", elementToFind, elementIdToAdd, elementSetIdToAdd));                            
-                                                                                                                
-                            // If non collection record and object_id is available in the record received from dmt service                            
-                            if(type_id != null && elementToFind.equals(objectIdentifier)){
-                                List existResponseList = this.recordExists(elementIdToAdd, element.get("text").toString());
-                                // existResponseList.get(0) contains whether record exists in omeka or not.
-                                // Possible values are: true, false or null. 
-                                // true: if a record is found
-                                // false: no record found
-                                // null: find record request to omeka was unsuccessfull
+                String namespaceToFind = splitName[0];
+                if(namespaceToFind.equals("dcterms"))
+                    namespaceToFind = "dc";                
 
-                                // existResponseList.get(1) contains identifier of the found record, 
-                                // which is needed to make update requst
-                                if(existResponseList.get(0) != null){
-                                    //record found therefore it is an upate operation
-                                    if((Boolean)existResponseList.get(0) == true){
-                                        responseList.add("UPDATE"); 
-                                        object.put("id", existResponseList.get(1));
-                                    }   
+                if(this.omekaElements.containsKey(namespaceToFind))
+                {                       
+                    String elementToFind2 = libisinUtils.capitalizeFirstLetter(splitName[1]);   
 
-                                    //record not found therefore it is an add operation
-                                    if((Boolean)existResponseList.get(0) == false)   
-                                        responseList.add("ADD"); 
+                        /* Digitool urls */
+                    if(elementToFind2.equals(digitToolElement))
+                    {
+                        this.requestLog.log(Level.INFO, "---->Processing digitool"); 
+                        if(element.get("text") != null)                                                                             
+                            this.setDigiToolPid(element.get("text").toString());
+                        else          
+                            this.requestLog.log(Level.SEVERE, "----->Digitool pid not given"); 
 
-                                }                        
-                                else        // null value, therefore no further processing for this object.                       
-                                {                                    
-                                    this.requestLog.log(Level.SEVERE, "Existing item check faild, no further processing for this item");                                    
-                                    //it did not return tur or false, infact it returned null;                        
-                                    break;
-                                }
-                            }    
-                            
-                            if(type_id == null && elementToFind.toLowerCase().equals("title")){    // It is collection type
-                                //Check if collection exists:
-                                //1. if multiple collection exists, do not proceed, throw an error
-                                //2. if one collection exists, perform update operation
-                                //3. if no collection exists, perform add operation
+                        element.clear();
+                        continue;                                
+                    }                        
 
-                                List collectionExistResponseList = this.collectionExists(element.get("text").toString());
-                                if(collectionExistResponseList.get(0) != null){
-                                    //collection found therefore it is an upate operation
-                                    if((Boolean)collectionExistResponseList.get(0) == true){
-                                        responseList.add("UPDATE"); 
-                                        object.put("id", collectionExistResponseList.get(1));
-                                        System.out.println(element.get("text").toString() + " - collection found, it is an update operation");
-                                    } 
+                    JSONObject elementTypeJsonObject = (JSONObject)this.omekaElements.get(namespaceToFind);
+                    JSONObject elementJsonObject = (JSONObject)elementTypeJsonObject.get("elements");
+                    if(!elementJsonObject.containsKey(elementToFind2)){
+                        this.requestLog.log(Level.SEVERE, "{0}", String.format("Element '%s' not found in namespace(set) %s", elementToFind2, namespaceToFind)); 
+                        element.clear();                                                                                                               
+                        continue;                                 
+                    }
 
-                                    //collection not found therefore it is an add operation
-                                    if((Boolean)collectionExistResponseList.get(0) == false){
-                                        System.out.println(element.get("text").toString() + " - collection not found, it is an add operation");
-                                        responseList.add("ADD");                         
-                                    }   
+                    this.requestLog.log(Level.INFO, "{0}", String.format("Element '%s' found in namespace(set) %s", elementToFind2, namespaceToFind)); 
+                    JSONObject elementObject = (JSONObject)elementJsonObject.get(elementToFind2);
+                    if(!elementObject.containsKey("element_id") || !elementObject.containsKey("set_id")){
+                        this.requestLog.log(Level.SEVERE, "Error in getting information about element:{0}, movign to next element", elementToFind2);                             
+                        System.out.println("Error in getting information about element '" + elementToFind2+ "', moving to next element");
+                        element.clear();
+                        continue;                                 
+                    }
 
-                                }
-                                else{
-                                    System.out.println("Collection (" + element.get("text").toString() + ") exist check faild.");
-                                    break;
-                                }
+                    //Element found, get element id and set id
+                    elementIdToAdd = elementObject.get("element_id").toString();
+                    elementSetIdToAdd = elementObject.get("set_id").toString();                        
+ 
+                    // If non collection record and object_id is available in the record received from dmt service                            
+                    if(type_id != null && elementToFind2.equals(objectIdentifier)){
+                            List existResponseList = this.recordExists(elementIdToAdd, element.get("text").toString());
+                            // existResponseList.get(0) contains whether record exists in omeka or not.
+                            // Possible values are: true, false or null. 
+                            // true: if a record is found
+                            // false: no record found
+                            // null: find record request to omeka was unsuccessfull
+
+                            // existResponseList.get(1) contains identifier of the found record, 
+                            // which is needed to make update requst
+                            if(existResponseList.get(0) != null){
+                                //record found therefore it is an upate operation
+                                if((Boolean)existResponseList.get(0) == true){
+                                    responseList.add("UPDATE"); 
+                                    object.put("id", existResponseList.get(1));
+                                }   
+
+                                //record not found therefore it is an add operation
+                                if((Boolean)existResponseList.get(0) == false)   
+                                    responseList.add("ADD"); 
+
+                            }                        
+                            else        
+                            {
+                                // null value, therefore no further processing for this object.                       
+                                this.requestLog.log(Level.SEVERE, "Existing item check faild, no further processing for this item");                                    
+                                //it did not return tur or false, infact it returned null;                        
+                                break;
                             }                            
-                                                        
-                            /*
-                             * Replace element name with: element_id and element_set_id. This is done by adding a new json entry and removing the old entry with 
-                               element name
-                            */                             
-                            JSONObject elementObj = new JSONObject();
-                            JSONObject elementSetObj = new JSONObject();
-                            
-                            elementObj.put("id", elementIdToAdd);
-                            elementSetObj.put("id", elementSetIdToAdd);
-                            element.remove("element");
-                            element.put("element", elementObj);                  
-                            element.put("element_set", elementSetObj);
+                    }                        
+
+                    // If no type_id is given and element to find is 'title', it is collection type
+                    if(type_id == null && elementToFind2.toLowerCase().equals("title")){    
+                        //Check if collection exists:
+                        //1. if multiple collection exists, do not proceed, throw an error
+                        //2. if one collection exists, perform update operation
+                        //3. if no collection exists, perform add operation
+
+                        List collectionExistResponseList = this.collectionExists(element.get("text").toString());
+                        if(collectionExistResponseList.get(0) != null){
+                            //collection found therefore it is an upate operation
+                            if((Boolean)collectionExistResponseList.get(0) == true){
+                                responseList.add("UPDATE"); 
+                                object.put("id", collectionExistResponseList.get(1));
+                                this.requestLog.log(Level.INFO, "Collection '{0}' found, it is an update operation", element.get("text").toString()); 
+                                System.out.println(element.get("text").toString() + " - Collection found, it is an update operation");
+                            } 
+
+                            //collection not found therefore it is an add operation
+                            if((Boolean)collectionExistResponseList.get(0) == false){
+                                this.requestLog.log(Level.SEVERE, "Collection '{0}' not found, it is an add operation", element.get("text").toString()); 
+                                System.out.println(element.get("text").toString() + " - Collection not found, it is an add operation");
+                                responseList.add("ADD");                         
+                            }   
+
                         }
                         else{
-                            this.requestLog.log(Level.SEVERE, "{0}", String.format("%s element not found in set %s", elementToFind, elementSetObject.get("id").toString())); 
-                            element.clear();
+                            this.requestLog.log(Level.SEVERE, "Collection '{0}' exist check faild", element.get("text").toString()); 
+                            System.out.println("Collection (" + element.get("text").toString() + ") exist check faild.");
+                            break;
                         }
-                            
-                    }
-                    else{
-                        this.requestLog.log(Level.SEVERE, "Element set not found: {0}", this.omekaServerConfig.getProperty(splitName[0]));                        
-                        element.clear();
-                    }
-                        
+                    }                        
+
+                /*
+                 * Replace element name with: element_id and element_set_id. This is done by adding a new json entry and removing the old entry with 
+                   element name
+                */                             
+                JSONObject elementObj = new JSONObject();
+                JSONObject elementSetObj = new JSONObject();
+
+                elementObj.put("id", elementIdToAdd);
+                elementSetObj.put("id", elementSetIdToAdd);
+                element.remove("element");
+                element.put("element", elementObj);                  
+                element.put("element_set", elementSetObj);
                 }
                 else{
-                    this.requestLog.log(Level.SEVERE, "No corresponding long name defined in configuration for element set: {0}", splitName[0]);                        
-                    element.clear();
-                }
-                    
+                    System.out.println("Namespace '" + namespaceToFind + "' does not exists in omeka, moving to next element");
+                    this.requestLog.log(Level.SEVERE, "Namespace (element set) not found: {0}", splitName[0]);                        
+                    element.clear();                                                    
+                }       
+    
             }
             else{
                 this.requestLog.log(Level.SEVERE, "{0}", String.format("No name space provided: %s", elementName)); 
@@ -677,12 +678,12 @@ public class OmekaData {
     }
 
     /**
-     * Returns element name and identifier, and identifier of the associated element set
-     * @param  elementId  identifier of an element. If null, values will be returned for all elements
-     * @return      element name, element id and element set id
-     */    
-    public JSONObject getElements(String elementId){   
-        JSONObject elements = new JSONObject();
+     *
+     * @param elementId
+     * @return
+     */
+    public JSONObject getElementByID(String elementId){
+        JSONObject element = new JSONObject();
                
 	try {                    
             URI uri = this.prepareRequst("element",elementId, false, null);     
@@ -692,24 +693,118 @@ public class OmekaData {
             HttpEntity entity = response.getEntity();
                        
             JSONParser parser = new JSONParser();
+            JSONObject messageBody = (JSONObject) parser.parse(EntityUtils.toString(entity, "UTF-8"));            
+            JSONObject elementSet = (JSONObject)messageBody.get("element_set");
+            element.put("element_id",messageBody.get("id").toString());                 // Element name  
+            element.put("element_name",messageBody.get("name").toString());              // Element name              
+            element.put("set_id",elementSet.get("id").toString());                      // Element set id  
+
+	  } catch (IOException | org.apache.http.ParseException | ParseException ex) {
+                this.requestLog.log(Level.SEVERE, "Get element by id exception: {0}", ex.getMessage());
+                return null;
+	  }                
+        return element;
+    }
+        
+    public JSONObject getTypesElements(){
+        /* Get all types, for each type retrieve its element, 
+           for each element get element id,element name and corresponding set id
+        */        
+        JSONObject typeElements = new JSONObject();
+        
+        // Add dublin core elements
+        JSONObject dcElements = this.getDCElements();
+        JSONObject dcTemp = new JSONObject();
+        dcTemp.put("type_id", null);
+        dcTemp.put("elements", dcElements);
+        typeElements.put("dc", dcTemp);     //add Dublin Core elements with type name "dc"
+        
+        JSONArray responseBody = (JSONArray)this.getResources("item_type", null, null);
+        for (Object responseObject : responseBody) {
+            JSONObject type = (JSONObject) responseObject;
+ 
+            JSONArray tyepElementsArray = (JSONArray) type.get("elements");                                         
+            JSONObject tempType = new JSONObject();
+            JSONObject tempElement = new JSONObject();
+            
+            for (Object objectElement : tyepElementsArray) {
+                JSONObject typeElement = (JSONObject) objectElement;
+                
+                JSONObject elementObj = this.getElementByID(typeElement.get("id").toString());
+                if(elementObj == null)
+                    continue;
+
+                JSONObject temp = new JSONObject();
+                temp.put("element_id", elementObj.get("element_id"));
+                temp.put("set_id", elementObj.get("set_id"));
+                
+                tempElement.put(elementObj.get("element_name"), temp);
+            
+            }   
+            if(tempElement.size() == 0 )
+                continue;
+            
+            tempType.put("type_id", type.get("id"));
+            tempType.put("elements", tempElement);
+            typeElements.put(type.get("name").toString().toLowerCase(), tempType);                
+        } 
+        return typeElements;
+    }
+    
+    public JSONObject getDCElements(){   
+        JSONObject elements = new JSONObject();
+        JSONArray responseBody = this.getElementsBySetId("1");              
+        for (Object responseObject : responseBody) {
+            JSONObject dcElement = (JSONObject) responseObject;
+            
+            JSONObject objectElementSet = (JSONObject)dcElement.get("element_set");
+            
+            JSONObject temp = new JSONObject();
+            temp.put("element_id", dcElement.get("id"));
+            temp.put("set_id", objectElementSet.get("id"));
+            
+            elements.put(dcElement.get("name"), temp);
+        }
+        return elements;
+    }     
+    
+    /**
+     * Returns element name and identifier, and identifier of the associated element set
+     * @return      element name, element id and element set id
+     */  
+    /*
+    public JSONObject getElements(){   
+        JSONObject elements = new JSONObject();
+               
+	try {                    
+            URI uri = this.prepareRequst("element",null, false, null);     
+            HttpGet httpget = new HttpGet(uri);
+            HttpClient httpclient = new DefaultHttpClient();
+            HttpResponse response = httpclient.execute(httpget);             
+            HttpEntity entity = response.getEntity();
+                       
+            JSONParser parser = new JSONParser();            
             JSONArray messageBody = (JSONArray) parser.parse(EntityUtils.toString(entity, "UTF-8"));            
             for (Object message : messageBody) {
                 JSONObject objectElement = (JSONObject) message;
                 JSONObject objectElementSet = (JSONObject)objectElement.get("element_set");
                 
-                JSONArray values = new JSONArray();
-                values.add(objectElement.get("id").toString());               // Element id      
-                values.add(objectElementSet.get("id").toString());            // Element set id    
-                elements.put(objectElement.get("name").toString().toLowerCase(), values);                
+                JSONObject temp = new JSONObject();                
+                temp.put("element_id", objectElement.get("id"));
+                temp.put("set_id", objectElementSet.get("id"));
+                
+                elements.put(objectElement.get("name").toString().toLowerCase(), temp);                
             }
             
 	  } catch (IOException | org.apache.http.ParseException | ParseException ex) {
                 this.requestLog.log(Level.SEVERE, "Get elements Exception: {0}", ex.getMessage());
+                return null;
 	  }                
         return elements;
-    }    
-    
-    
+    }   
+    */
+
+        
     /**
      * Returns   element set
      * @param    elementSetName name of the element set
@@ -791,7 +886,7 @@ public class OmekaData {
     }    
     
     
-    /**CURRENTLY NOT USED
+    /**
      * Returns a pair of item type name and identifier
      * @param typeId identifier of an item type     
      * @return  returns a pair of item type id and name of the if no argument is provided
@@ -838,9 +933,6 @@ public class OmekaData {
                 this.requestLog.log(Level.INFO, "Add resource request body: {0}", requestBody);
             }            
             this.requestLog.log(Level.INFO, "Add resource url: {0}", uri);
-            
-            System.out.println("image add url:" + uri);
-            
             return httpclient.execute(httppost);
             
         } catch ( UnsupportedEncodingException ex) {

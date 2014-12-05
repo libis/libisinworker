@@ -83,6 +83,10 @@ public class Libisinworker {
             dmtService.requestLog = requestLog;
             setData.requestLog = requestLog;
 
+            //Prepare list of omeka elements, this list will be used for each record.
+            System.out.println("--->Collecting omeka elements information.");
+            omekaRecords.omekaElements = omekaRecords.getTypesElements();
+            
             System.out.println("+---------------------------");
             System.out.println("Request processing started at: " + new Timestamp(new java.util.Date().getTime()));
             System.out.println("Request directory: " + new File(requestDirectory).getName());
