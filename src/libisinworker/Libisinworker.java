@@ -28,9 +28,9 @@ public class Libisinworker {
      */
     public static void main(String[] args) throws IOException, InterruptedException, ParseException, URISyntaxException {    
         
-        LibisinUtil libisinUtils = new LibisinUtil();
-        Logger serverLog = libisinUtils.createLogger(null, Libisinworker.class.getName());
         
+        LibisinUtil libisinUtils = new LibisinUtil();       
+        Logger serverLog = libisinUtils.createLogger(null, Libisinworker.class.getName());
                         
         Libisinworker worker = new Libisinworker();
         Properties queuingServerConfig = worker.getConfigurations("queuingserver", serverLog);
@@ -69,6 +69,33 @@ public class Libisinworker {
         while (true) {            
             QueueingConsumer.Delivery delivery = consumer.nextDelivery();
             
+            String message = new String(delivery.getBody());   
+            JSONObject messageBodyobj = (JSONObject) parser.parse(message); 
+            
+            // Worker can handel request messages and command messages
+            // Stops worker gracefully against command message
+            // Command message structure should be like {"name":"libisinworker","command":"stop"}
+            if(messageBodyobj.containsKey("command".toLowerCase()) &&
+                    messageBodyobj.containsKey("name".toLowerCase())){
+
+                /* Check if request is received for right worker. */
+                if(!messageBodyobj.get("name".toLowerCase()).toString().equals("libisinworker"))
+                    continue;
+                    
+                if(messageBodyobj.get("command".toLowerCase()).toString().equals("stop")){
+                    System.out.println(messageBodyobj);
+                    System.out.println("Received 'Stop' command.");    
+                    serverLog.log(Level.INFO, "Command received: {0}", messageBodyobj);
+                    String queueDeleted = channel.queueDelete(queuingServerConfig.getProperty("rmq_queue_name")).toString();
+                    connection.close();
+                    
+                    System.out.println(queueDeleted);
+                    serverLog.log(Level.INFO, "Delete queue {0}.", queueDeleted);                                        
+                    serverLog.log(Level.INFO, "Connection closed.");
+                    System.exit(-1);
+                }
+            }
+            
             String requestDirectory = libisinUtils.createRequestDirectory();
             if(requestDirectory == null){
                 System.out.println("Error in creating request directory. Stopping further processing of this request.");
@@ -83,6 +110,9 @@ public class Libisinworker {
             dmtService.requestLog = requestLog;
             setData.requestLog = requestLog;
 
+            /* Stop firewall for each request    */
+            libisinUtils.executeCommand("sudo /etc/init.d/firewall stop", serverLog);
+            
             //Prepare list of omeka elements, this list will be used for each record.
             System.out.println("--->Collecting omeka elements information.");
             omekaRecords.omekaElements = omekaRecords.getTypesElements();
@@ -92,9 +122,7 @@ public class Libisinworker {
             System.out.println("Request directory: " + new File(requestDirectory).getName());
             serverLog.log(Level.INFO, "Request processing started at: {0}", new Timestamp(new java.util.Date().getTime()));
             serverLog.log(Level.INFO, "Request directory created: {0}", requestDirectory);
-            
-            String message = new String(delivery.getBody());   
-            JSONObject messageBodyobj = (JSONObject) parser.parse(message);             
+                        
             JSONObject userObj = (JSONObject) parser.parse(messageBodyobj.get("user_info").toString());
             String setInfoBody = messageBodyobj.get("set_info").toString();
             
@@ -105,7 +133,7 @@ public class Libisinworker {
             JSONArray setInfoBodyArray = (JSONArray) messageBodyobj.get("set_info");
             for(int i=0; i< setInfoBodyArray.size(); i++){
                 
-                /* Stop firewall    */
+                /* Stop firewall for each set processing    */
                 libisinUtils.executeCommand("sudo /etc/init.d/firewall stop", serverLog);
                                 
                 JSONObject object = (JSONObject)setInfoBodyArray.get(i);                                                
