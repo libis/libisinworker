@@ -53,11 +53,12 @@ public class LibisinUtil {
         return null;
     }  
     
-    public String createRequestDirectory(){ 
+    public String createRequestDirectory(){                
         String strNanoTime = Long.toString(System.nanoTime());
         String currentWorkingDir = System.getProperty("user.dir");
         String timeName = strNanoTime.substring(strNanoTime.length()/2);        
         return this.createDirectory(currentWorkingDir + "/files", timeName);
+        
     }
           
     public String createDirectory(String path, String name){       
@@ -82,10 +83,11 @@ public class LibisinUtil {
         return file.delete();
     }
     
-    public Logger createLogger(String logFilePath, String className){
+    public Logger createLogger(String logFilePath, String className){                                
         Logger logger = null;
         if(logFilePath == null){            // in case of null it is a server log
             logFilePath = System.getProperty("user.dir") + "/log/default.log";        
+            //logFilePath = currentDir + "log/default.log";        
             this.removeFile(logFilePath);   // delete log file at startup
         }
 
@@ -187,7 +189,7 @@ public class LibisinUtil {
     }
       return sb.toString().trim();
     }    
-	
+        
     public void executeCommand(String command, Logger serverLog){
         String s = null;
  

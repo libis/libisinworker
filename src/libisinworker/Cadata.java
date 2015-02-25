@@ -67,7 +67,9 @@ public class Cadata {
             System.out.println("-->Processing set "+ setName);                       
             this.requestLog.log(Level.INFO, "Processing set: {0}", setName);
             this.requestLog.log(Level.INFO, "Collectieve Access rest api url: {0}", url);
+            this.requestLog.log(Level.INFO, "Bundle: {0}", bundle);
 
+            System.out.println(bundle);
             WebResource webResource = client.resource(url);                        
             ClientResponse response = webResource.type("application/json").post(ClientResponse.class, bundle);
             String output = response.getEntity(String.class);

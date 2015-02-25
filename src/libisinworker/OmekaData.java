@@ -12,6 +12,8 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
@@ -77,7 +79,9 @@ public class OmekaData {
                 System.out.println("--->Processing record: " + (i+1));
                 this.requestLog.log(Level.INFO, "Processing record: {0}", (i+1));
                 JSONObject object = (JSONObject)messageBodyobj.get(i);  
-                                
+                
+                String type_identifier = "";
+                
                 Boolean isValidRecord = false;
                 String urlType = null;
                 this.requestLog.log(Level.INFO, "record Type: {0}", setRecordsType);                
@@ -114,10 +118,12 @@ public class OmekaData {
                     case "occurrences":
                         urlType = "item";
                         if(object.get("item_type") != null){
+                                                                                   
                             /*  Get type_name and type_id only once(i.e. for the first record) and reuse it
                                 for next records.
                             */
                             if(type_id == null){                                
+                                System.out.println("item_type->" + object.get("item_type").toString().toLowerCase());
                                 if(this.omekaElements.containsKey(object.get("item_type").toString().toLowerCase())){
                                     JSONObject itemTypeObject = (JSONObject)this.omekaElements.get(object.get("item_type").toString().toLowerCase());
                                     type_id = itemTypeObject.get("type_id").toString();
@@ -155,8 +161,8 @@ public class OmekaData {
                 /*  Process each record. */
                 this.requestLog.log(Level.INFO, "Record type: {0}", urlType);
                 
-                List responeList = this.processRecords(object, type_id);                 
-                if(responeList.size() == 2 && responeList.get(0) != null && responeList.get(1) != null){                    
+                List responeList = this.processRecords(object, type_id, setRecordsType);                 
+                if(responeList != null && responeList.size() == 2 && responeList.get(0) != null && responeList.get(1) != null){                    
                     String requestType = responeList.get(0).toString();
                     JSONObject omekaObject = (JSONObject)responeList.get(1);
                                          
@@ -223,19 +229,55 @@ public class OmekaData {
      * if an element does not exist, throw an error for that particular element.
      * @param object object information
      * @param type_id
+     * @param setRecordsType
      * @return  Type of the operation to be performed (ADD or UPDATE) and modified object
      */ 
-    public  List processRecords(JSONObject object, String type_id){
+    public  List processRecords(JSONObject object, String type_id, String setRecordsType){
         List responseList = new ArrayList();
-        String objectIdentifier = libisinUtils.capitalizeFirstLetter(this.omekaServerConfig.getProperty("object_identifier"));
+        //String objectIdentifier = libisinUtils.capitalizeFirstLetter(this.omekaServerConfig.getProperty("object_identifier"));             
         String digitToolElement = libisinUtils.capitalizeFirstLetter(this.omekaServerConfig.getProperty("digitoolelement"));
+        
+        String objectIdentifier = "";        
         
         /*  Type_id has values for all non collection types. */
         if(type_id != null){
             /*  Add item_type to omeka record.  */
             JSONObject item_type = new JSONObject();    
             item_type.put("id", type_id);
-            object.put("item_type", item_type);                          
+            object.put("item_type", item_type);     
+            
+
+            objectIdentifier = this.omekaServerConfig.getProperty(setRecordsType+"_identifier");
+            if(objectIdentifier !=  null && objectIdentifier.length() > 1){
+                objectIdentifier = objectIdentifier.substring(0, 1).toUpperCase() + objectIdentifier.substring(1); 
+                this.requestLog.log(Level.INFO, "Type identifier :'" + setRecordsType + "_identifier'  found: "+ objectIdentifier +".");                  
+            }
+            else{
+                this.requestLog.log(Level.INFO, "Type identifier :''{0}_identifier'' not found.", setRecordsType); 
+                return null;
+            }
+            
+            /*  Add tags to omeka record. Tags will only be added for items (i.e. where type_id is given) */
+            this.requestLog.log(Level.INFO, "processing tags");
+            JSONArray tags = new JSONArray();            
+            if(object.get("tags") != null){
+                String tagsArray[] = object.get("tags").toString().split(";");
+                if(tagsArray.length > 0){
+                    for (String tag : tagsArray) {
+                        System.out.println("tag: "+tag);
+                        this.requestLog.log(Level.INFO, "tag: {0} ", tag);
+                        JSONObject tagObject = new JSONObject();               
+                        tagObject.put("name", tag);
+                        tags.add(tagObject);
+                    }
+                    object.put("tags", tags);                     
+                }
+                else
+                    this.requestLog.log(Level.INFO, "tags: not available");
+                 
+            }else
+                this.requestLog.log(Level.INFO, "tags: null");
+                                      
         }
         
         JSONArray objectElementsArray = (JSONArray) object.get("element_texts");                                         
@@ -263,10 +305,38 @@ public class OmekaData {
 
                 /* Set geolocation values. These values will be used later once object has been added or updated. */
                 if(splitName[0].equals("geolocation") && libisinUtils.capitalizeFirstLetter(splitName[1]).equals("Address")){
-                    System.out.println("---->Processing geolocation");
-                    this.requestLog.log(Level.INFO, "---->Processing geolocation"); 
-                    if(element.get("text") != null)                                                                             
-                        this.setGeoLocation(element.get("text").toString());
+                    System.out.println("---->Processing geolocation for type " + setRecordsType);
+                    this.requestLog.log(Level.INFO, "---->Processing geolocation for type {0}", setRecordsType); 
+                    
+                                                                              
+                    if(element.get("text") != null){
+                        
+                        // Entities have different data for georeference
+                        if(setRecordsType.equals("entiteiten")){                           
+                            String geoReferenceData = element.get("text").toString();
+                            Pattern p = Pattern.compile("\\[([^]]*)\\]");
+                            Matcher m = p.matcher(geoReferenceData);
+                            JSONArray geoRefObjArray = new JSONArray();                            
+                            while (m.find()) {
+                                String pathArray [] = m.group(1).split(",");
+                                if(pathArray.length != 2)
+                                    continue;
+                                                               
+                                JSONObject geoRefDataObj = new JSONObject();
+                                geoRefDataObj.put("latitude", pathArray[0]);                               
+                                geoRefDataObj.put("longitude", pathArray[1]);                               
+                                
+                                JSONObject geoRefObj = new JSONObject();
+                                geoRefObj.put("georeference", geoRefDataObj);                                                                 
+                                geoRefObjArray.add(geoRefObj);                                
+                            }
+                            this.setGeoLocation(geoRefObjArray.toString());
+                            
+                        }
+                    
+                        else
+                            this.setGeoLocation(element.get("text").toString());
+                    }                                                                                                     
                     else          
                         this.requestLog.log(Level.SEVERE, "----->Geolocation value not given."); 
                     
@@ -278,9 +348,17 @@ public class OmekaData {
                 if(namespaceToFind.equals("dcterms"))
                     namespaceToFind = "dc";                
 
-                if(this.omekaElements.containsKey(namespaceToFind))
+                if(this.omekaElements.containsKey(namespaceToFind.toLowerCase()))
                 {                       
-                    String elementToFind2 = libisinUtils.capitalizeFirstLetter(splitName[1]);   
+                    //String elementToFind2 = libisinUtils.capitalizeFirstLetter(splitName[1]);   
+                    
+                    String elementToFind2 = "";
+                    if(namespaceToFind.toLowerCase().equals("dc"))
+                        elementToFind2 = libisinUtils.capitalizeFirstLetter(splitName[1]);
+                    else
+                        elementToFind2 = splitName[1].substring(0, 1).toUpperCase() + splitName[1].substring(1);
+                    
+                        
 
                         /* Digitool urls */
                     if(elementToFind2.equals(digitToolElement))
@@ -1001,6 +1079,17 @@ public class OmekaData {
     }
         
     public void setGeoLocation(String locationString){
+        if(locationString.toLowerCase().contains("georeference".toLowerCase())){
+            System.out.println(locationString);
+            this.requestLog.log(Level.INFO, "georeference information: {0}", locationString);
+        }            
+        else
+        {
+            System.out.println("Error in adding georeference information.");
+            this.requestLog.log(Level.SEVERE, "Error in adding georeference information.");
+            this.requestLog.log(Level.SEVERE, "Georeference information incorrect.");
+            return;
+        }
         
         try {
             JSONParser parser = new JSONParser();        
@@ -1029,6 +1118,7 @@ public class OmekaData {
             
         } catch (ParseException ex) {
             this.requestLog.log(Level.SEVERE, "Parse geolocation exception: {0}", ex.getMessage());
+            
         }
     }    
     
