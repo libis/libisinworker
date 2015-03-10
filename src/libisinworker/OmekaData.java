@@ -17,6 +17,7 @@ import java.util.regex.Pattern;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpDelete;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpPut;
@@ -1021,12 +1022,55 @@ public class OmekaData {
             return null;
         }
     }
-        
+    
+    /**
+     * Remove existing resources. For example, existing location for an item. 
+     * All locations are retrieved and searched for item_id. Found locations are removed.
+     * @param id
+     * @param resourceType
+     */
+    public void removeResource(String id, String resourceType){
+        this.requestLog.log(Level.INFO, "{0}", String.format("Removing '%s' resources for id: %s", resourceType, id));                 
+        JSONArray responseBody = (JSONArray)this.getResources(resourceType, null, null);
+        if(responseBody.size() >0 ){
+            for (Object objectElement : responseBody) {
+                JSONObject element = (JSONObject) objectElement;
+                if(!element.isEmpty()){
+                    String locationID = element.get("id").toString();                
+                    JSONObject locationItem = (JSONObject)element.get("item");                
+                    String locationItemID = locationItem.get("id").toString();  
+                    if(locationItemID.equals(id) && locationID.length() > 0){
+                        try {                                            
+                            this.requestLog.log(Level.INFO, "Removing resource with id: {0}", locationID);
+                            URI uri = this.prepareRequst(resourceType,locationID, true, null);             
+                            HttpDelete httpdelete = new HttpDelete(uri);
+                            HttpClient httpclient = new DefaultHttpClient();
+                            HttpResponse response = httpclient.execute(httpdelete);   
+                            this.requestLog.log(Level.INFO, "Removing resource response: {0}", response);
+                            System.out.println(response);
+
+                          } catch (IOException ex) {
+                                this.requestLog.log(Level.SEVERE, "Removing resources Exception: {0}", ex.getMessage());
+                          }                                                             
+                    }
+                }
+            }              
+        }
+        else
+            this.requestLog.log(Level.INFO, "Remove ' {0}' failed. Because no information exist in the database.", resourceType);
+
+    }
+            
     public void addLocation(String item){
         try {
             JSONParser parser = new JSONParser();        
             JSONObject itemObj = (JSONObject) parser.parse(item);
-            if(itemObj.get("id") != null){    
+            if(itemObj.get("id") != null){
+                                
+                //Remove existing location from omeka before adding a new one. 
+                //Currently, it is not possible to add multiple locations in omeka
+                this.removeResource(itemObj.get("id").toString(), "geo_location");              
+                                
                 System.out.println("---->Addig locations for: " + itemObj.get("id"));
                 for (GeoLocation geoLocation : this.locations) {
                     JSONObject locationObj = new JSONObject();
