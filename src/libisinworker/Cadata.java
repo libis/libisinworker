@@ -7,12 +7,17 @@ import com.sun.jersey.api.client.WebResource;
 import com.sun.jersey.api.client.config.ClientConfig;
 import com.sun.jersey.api.client.config.DefaultClientConfig;
 import com.sun.jersey.api.client.filter.HTTPBasicAuthFilter;
+import java.io.File;
+import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.net.URLEncoder;
 
 import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import org.apache.commons.io.FileUtils;
 
 
 
@@ -24,52 +29,50 @@ import java.util.logging.Logger;
 public class Cadata {
     protected Logger requestLog;
 
-    public String getSetData(String setName, Properties caServerConfig, String bundle, String setRecordsType, String requestDirectory){
-        
+    public String getSetData(String setName, Properties caServerConfig, String bundle, String setRecordsType, String requestDirectory){        
         LibisinUtil libisinUtils = new LibisinUtil();                
-        try {
-            ClientConfig config = new DefaultClientConfig();
-            Client client = Client.create(config);
-            client.addFilter(new HTTPBasicAuthFilter(caServerConfig.getProperty("ca_user_id"), caServerConfig.getProperty("ca_user_password")));    
-          
-            String endPoint = null;
-            switch(setRecordsType){
-                case "collecties":      
-                case "collections":      
-                    endPoint = caServerConfig.getProperty("ca_collection_path");
-                break;                        
-                    
-                case "objecten":   
-                case "objects":                    
-                    endPoint = caServerConfig.getProperty("ca_object_path");
-                break;  
+        ClientConfig config = new DefaultClientConfig();
+        Client client = Client.create(config);
+        client.addFilter(new HTTPBasicAuthFilter(caServerConfig.getProperty("ca_user_id"), caServerConfig.getProperty("ca_user_password")));    
 
-                case "entiteiten":   
-                case "entities":                    
-                    endPoint = caServerConfig.getProperty("ca_entity_path");
-                break;                      
+        String endPoint = null;
+        switch(setRecordsType){
+            case "collecties":      
+            case "collections":      
+                endPoint = caServerConfig.getProperty("ca_collection_path");
+            break;                        
 
-                case "gebeurtenissen":   
-                case "occurrences":                    
-                    endPoint = caServerConfig.getProperty("ca_occurrence_path");
-                break;                        
-                                                            
-                default:    /* Default endpoint is object  */
-                    endPoint = caServerConfig.getProperty("ca_object_path"); 
-            }                                       
+            case "objecten":   
+            case "objects":                    
+                endPoint = caServerConfig.getProperty("ca_object_path");
+            break;  
+
+            case "entiteiten":   
+            case "entities":                    
+                endPoint = caServerConfig.getProperty("ca_entity_path");
+            break;                      
+
+            case "gebeurtenissen":   
+            case "occurrences":                    
+                endPoint = caServerConfig.getProperty("ca_occurrence_path");
+            break;                        
+
+            default:    /* Default endpoint is object  */
+                endPoint = caServerConfig.getProperty("ca_object_path"); 
+        }       
             
+        try {    
             String setSearch = "set:\""+ setName +"\"";
             String url = "http://" + caServerConfig.getProperty("ca_server") 
                     + "/" + caServerConfig.getProperty("ca_base_path") + "/" 
                     + endPoint
-                    + "?q="+ URLEncoder.encode(setSearch, "UTF-8") +"&pretty=1&format=edit" ;                                       
-            
+                    + "?q="+ URLEncoder.encode(setSearch, "UTF-8") +"&pretty=1&format=edit" ;                                                           
+
             System.out.println("-->Processing set "+ setName);                       
             this.requestLog.log(Level.INFO, "Processing set: {0}", setName);
             this.requestLog.log(Level.INFO, "Collectieve Access rest api url: {0}", url);
             this.requestLog.log(Level.INFO, "Bundle: {0}", bundle);
 
-            System.out.println(bundle);
             WebResource webResource = client.resource(url);                        
             ClientResponse response = webResource.type("application/json").post(ClientResponse.class, bundle);
             String output = response.getEntity(String.class);
@@ -81,11 +84,81 @@ public class Cadata {
             }                      
             return libisinUtils.writeFile(requestDirectory + "/" +setName+".json", output, false);   
 
-        } catch (UnsupportedEncodingException | RuntimeException e) {
-            this.requestLog.log(Level.SEVERE, "Collective Access record retrieval exception: {0}", e.getMessage()); 
-            return null;
-        }
+            } catch (UnsupportedEncodingException | RuntimeException e) {
+                this.requestLog.log(Level.SEVERE, "Collective Access record retrieval exception: {0}", e.getMessage()); 
+                this.requestLog.log(Level.INFO, "Downoading file with alternative method: "); 
+
+                /*  
+                    For api calls with large waiting time connection with collection access is terminated. 
+                    In such cases, collective access will store the response(result) in app/tmp directory. 
+                    Here we download response of our api request from app/tmp directory.
+                */
+
+                String tempFileUrl = "http://" + caServerConfig.getProperty("ca_server") 
+                        + "/" + caServerConfig.getProperty("ca_base_path") + "/app/tmp/"+setName+".txt" ;  
+                tempFileUrl = tempFileUrl.replace("service.php/", "");
+                System.out.println("File to be downloaded from: " + tempFileUrl);     
+
+                String tempFileStoredIn = this.downloadFromUrl(tempFileUrl, requestDirectory + "/" +setName+".json");
+                return tempFileStoredIn;
+            }
         
     }
+    
+    public String downloadFromUrl(String tempFileUrl, String localFilename){
+        int numberOfTries = 1;
+        int totalNulberOfTries = 20;
+        try {            
+            File filetoWrite = new File(localFilename);            
+            URL url = new URL(tempFileUrl);
+            this.requestLog.log(Level.INFO, "Downloading temp file from: {0}", url.toString());
+            String filePath;
+            filePath = null;
+            do{
+                this.requestLog.log(Level.INFO, "{0}", String.format("Downloading temp file, try number: %s/%s", numberOfTries, totalNulberOfTries));                 
+                filePath = this.downloadFile(url, filetoWrite);
+                if(filePath == null){
+                    this.requestLog.log(Level.INFO, "Going to sleep:");
+                    Thread.sleep(5 * 60 * 1000);    //sleep for 5 minutes
+                    this.requestLog.log(Level.INFO, "Woke up:");                    
+                }
+                numberOfTries++;                
+                /* 
+                    Exit after 20 tries of 5 minute pause. That is, keep trying 
+                    for 1 hour and 40 minutes with a 5 minute pause in between. 
+                    As soon as the file is available, stop waiting and start 
+                    processing records in the file.
+                */
+                if(numberOfTries == totalNulberOfTries) 
+                    break;
+                
+            }while(filePath == null);
+
+            return filePath;
+            
+        } catch (MalformedURLException | InterruptedException ex ) {
+            this.requestLog.log(Level.SEVERE, "Collective Access record retrieval temp file download exception: {0}", ex.getMessage());
+            this.requestLog.log(Level.SEVERE, "Collective Access record retrieval temp file download exception: {0}", ex.getStackTrace());
+            return null;
+        } 
+    }
+    
+    public String downloadFile(URL url, File filetoWrite){
+        try {
+            FileUtils.copyURLToFile(url, filetoWrite);    
+            if(filetoWrite.exists() && filetoWrite.length() > 0){
+                this.requestLog.log(Level.INFO, "File downloaded successfully. Length {0} kb", filetoWrite.length()/1024);
+                return filetoWrite.getAbsolutePath();
+            }                
+            else
+                return null;
+            
+        } catch (IOException ex) {
+            this.requestLog.log(Level.SEVERE, "Collective Access record retrieval temp file not available: {0}", ex.getMessage());
+            this.requestLog.log(Level.SEVERE, "Collective Access record retrieval temp file not available: {0}", ex.getStackTrace());
+            return null;
+        }
+    }
+    
        
 }

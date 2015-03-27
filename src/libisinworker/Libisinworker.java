@@ -8,6 +8,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.sql.Timestamp;
+import java.text.DecimalFormat;
 import java.util.Date;
 import java.util.Properties;
 import java.util.logging.Level;
@@ -38,14 +39,14 @@ public class Libisinworker {
         Properties dmtServiceConfig = worker.getConfigurations("dmtservice", serverLog);
         Properties omekaServiceConfig = worker.getConfigurations("omekaserver", serverLog);
         Properties libisinWorkerConfig = worker.getConfigurations("libisinworker", serverLog);
-                        
+       
         Connection connection = worker.connectQueuingServer(queuingServerConfig, serverLog);
         Channel channel = connection.createChannel();        
         channel.queueDeclare(queuingServerConfig.getProperty("rmq_queue_name"), false, false, false, null);
                 
         QueueingConsumer consumer = new QueueingConsumer(channel);        
         channel.basicConsume(queuingServerConfig.getProperty("rmq_queue_name"), true, consumer);    
-
+                 
         String connectionMessage = "Connection established to: \n" 
             + "---------  \n"
             + "server: " + queuingServerConfig.getProperty("rmq_server") + " \n"
@@ -58,9 +59,29 @@ public class Libisinworker {
         
         System.out.println(connectionMessage);        
         serverLog.log(Level.INFO, connectionMessage);
+        
+        
+        String omekaBaseUrl = omekaServiceConfig.getProperty("omeka_url_base");
+        String omeka = omekaBaseUrl.substring(0,omekaBaseUrl.lastIndexOf("/index.php"));
+        serverLog.log(Level.INFO, "Omeka server: http://{0}", omeka);
+
+        String dmtBaseUrl = dmtServiceConfig.getProperty("dmt_url_base");
+        String mappingService = dmtBaseUrl.substring(0,dmtBaseUrl.lastIndexOf("/dmt.php"));
+        serverLog.log(Level.INFO, "DMT Service: http://{0}", mappingService);   
+        
+        String collectiveAccessBaseUrl = caServerConfig.getProperty("ca_server") 
+                +"/"+ caServerConfig.getProperty("ca_base_path");
+        String collectiveAccess = collectiveAccessBaseUrl.substring(0,collectiveAccessBaseUrl.lastIndexOf("/service.php"));
+        serverLog.log(Level.INFO, "Collective Access server: http://{0}", collectiveAccess);         
+        
+        System.out.println("---------");
+        System.out.println("Collective Access:  " + collectiveAccess);
+        System.out.println("Mapping Service:    " + mappingService );
+        System.out.println("Omeka:              " + omeka);
+        System.out.println("---------");
+        
         System.out.println("[*] Waiting for messages. To exit press CTRL+C"); 
-        
-        
+                
         JSONParser parser = new JSONParser();
         Cadata setData = new Cadata();
         DmtService dmtService = new DmtService();
@@ -109,16 +130,14 @@ public class Libisinworker {
             omekaRecords.requestLog = requestLog;
             dmtService.requestLog = requestLog;
             setData.requestLog = requestLog;
-
-            /* Stop firewall for each request    */
-            libisinUtils.executeCommand("sudo /etc/init.d/firewall stop", serverLog);
             
             //Prepare list of omeka elements, this list will be used for each record.
             System.out.println("--->Collecting omeka elements information.");
-            omekaRecords.omekaElements = omekaRecords.getTypesElements();
+            omekaRecords.omekaElements = omekaRecords.getTypesElements(); 
             
             System.out.println("+---------------------------");
-            System.out.println("Request processing started at: " + new Timestamp(new java.util.Date().getTime()));
+            Timestamp requestT1 = new Timestamp(new java.util.Date().getTime());
+            System.out.println("Request processing started at: " + requestT1);
             System.out.println("Request directory: " + new File(requestDirectory).getName());
             serverLog.log(Level.INFO, "Request processing started at: {0}", new Timestamp(new java.util.Date().getTime()));
             serverLog.log(Level.INFO, "Request directory created: {0}", requestDirectory);
@@ -132,9 +151,6 @@ public class Libisinworker {
             System.out.println("Processing Request of user: "+ userObj.get("name").toString());
             JSONArray setInfoBodyArray = (JSONArray) messageBodyobj.get("set_info");
             for(int i=0; i< setInfoBodyArray.size(); i++){
-                
-                /* Stop firewall for each set processing    */
-                libisinUtils.executeCommand("sudo /etc/init.d/firewall stop", serverLog);
                                 
                 JSONObject object = (JSONObject)setInfoBodyArray.get(i);                                                
                 String mappingRules = object.get("mapping").toString();                              
@@ -155,7 +171,7 @@ public class Libisinworker {
 
                 ////send records to mapping service to map to omeka format               
                 String dmtMapResponse = dmtService.mapData(caRecordsFilePath, mappingFilePath, dmtServiceConfig);
-                
+                               
                 JSONObject requestIdobj = (JSONObject) parser.parse(dmtMapResponse);
                 String dmtRequestId = requestIdobj.get("request_id").toString();                
                                                 
@@ -174,8 +190,6 @@ public class Libisinworker {
                     }
                     else
                         requestLog.log(Level.INFO, "Records pushing to Omeka failed");    
-                        
-                    
                 }                    
                 else{
                     System.out.println("No data to add/update in omeka.");
@@ -183,9 +197,19 @@ public class Libisinworker {
                     requestLog.log(Level.SEVERE, "no data to add/update in omeka");
                 }                                                                                                                   
             }
-            System.out.println("Request processing finished at: " + new Timestamp(new java.util.Date().getTime()));
+            
+            Timestamp requestT2 = new Timestamp(new java.util.Date().getTime());
+            System.out.println("Request processing finished at: " + requestT2);
+            requestLog.log(Level.INFO, "Request processing finished at: {0}", requestT2);
+            
+            double processingTime = (((requestT2.getTime()) - requestT1.getTime())/(60000.0));
+            DecimalFormat df = new DecimalFormat("#0.000");
+            System.out.println("Total processing time: " + df.format(processingTime) + " minutes.");
+            requestLog.log(Level.INFO, "Total processing time: {0} minutes", df.format(processingTime));
+            
             libisinUtils.sendEmail(libisinWorkerConfig, userObj.get("email").toString(), userObj.get("name").toString(), 
                     requestLogFile,  requestDirectory+ "/report.txt", requestLog);
+            
             System.out.println("---------------------------+\n");
             libisinUtils.destroyLogger(requestLog);                                          
         }        
@@ -208,10 +232,10 @@ public class Libisinworker {
         factory.setUsername(queuingServerConfig.getProperty("rmq_id"));
         factory.setPassword(queuingServerConfig.getProperty("rmq_pwd"));
         factory.setVirtualHost(queuingServerConfig.getProperty("rmq_vhost"));
-        
+       
         Connection connection = null;
-        try {
-            connection = factory.newConnection();
+        try {            
+            connection = factory.newConnection();            
         } catch (IOException ex) {
             serverLog.log(Level.SEVERE, "Error in connecting queuing server: {0}", queuingServerConfig.getProperty("rmq_server"));
             serverLog.log(Level.SEVERE, "Exception Message: {0}", ex.getMessage());
@@ -226,19 +250,23 @@ public class Libisinworker {
         String configFile = "";
         switch(configuratinFor){
             case "queuingserver":
-                configFile = "queue_server_conf";
+                //configFile = "queue_server_conf";             // local config
+                configFile = "remote_queue_server_conf";        // remote config
                 break;
                 
             case "caserver":
-                configFile = "ca_server_conf";
+                //configFile = "ca_server_conf";
+                configFile = "remote_ca_server_conf";
                 break;                
                 
             case "dmtservice":
-                configFile = "dmt_service_conf";
+                //configFile = "dmt_service_conf";
+                configFile = "remote_dmt_service_conf";
                 break;                 
                 
             case "omekaserver":
-                configFile = "omeka_server_conf";
+                //configFile = "omeka_server_conf";
+                configFile = "remote_omeka_server_conf";
                 break;   
 
             case "libisinworker":

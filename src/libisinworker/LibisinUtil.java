@@ -7,6 +7,8 @@ import com.google.gson.JsonParser;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -18,6 +20,8 @@ import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import javax.activation.DataHandler;
 import javax.activation.DataSource;
 import javax.activation.FileDataSource;
@@ -31,6 +35,7 @@ import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
+import org.apache.commons.io.FilenameUtils;
 
 /**
  *
@@ -40,7 +45,7 @@ public class LibisinUtil {
          
     public String writeFile(String filePath, String content, boolean append){       
         try {
-            //System.out.println("Write file: " + filePath);
+            System.out.println("Write file: " + filePath);
             File file = new File(filePath);
             FileWriter fwContent = new FileWriter(file.getAbsoluteFile(), append);
             BufferedWriter bwContent = new BufferedWriter(fwContent);
@@ -153,11 +158,30 @@ public class LibisinUtil {
             }
             
             /* Attach log file */
+            boolean isZip = false;
             if(fileLog != null){
+                File logFiletoAttach = new File(fileLog); 
+                
+                /* Compress log file if its size is greater than 5mb */ 
+                if(logFiletoAttach.length() > 5242880){ 
+                    requestLog.log(Level.INFO, "Log file size ({0} MB) is greater than 5 MB, therefore compressing it.", logFiletoAttach.length()/1048576);
+                    String baseFileName = FilenameUtils.getBaseName(logFiletoAttach.getAbsolutePath());
+                    String requestDirectory = FilenameUtils.getFullPath(logFiletoAttach.getAbsolutePath());
+                    String zipFile = FilenameUtils.concat(requestDirectory, baseFileName+".zip");
+                    this.compressFile(logFiletoAttach, zipFile);
+                    fileLog = zipFile;    
+                    isZip = true;
+                    requestLog.log(Level.INFO, "Log file zipped to: {0}", zipFile);
+                }
+
                 messageBodyPart = new MimeBodyPart();
-                DataSource logSource = new FileDataSource(fileLog);            
+                DataSource logSource = new FileDataSource(fileLog);                            
                 messageBodyPart.setDataHandler(new DataHandler(logSource));
-                messageBodyPart.setFileName("Omeka_Integation_Log.txt");
+                if(isZip)
+                    messageBodyPart.setFileName("Omeka_Integation_Log.zip");
+                else
+                    messageBodyPart.setFileName("Omeka_Integation_Log.txt");
+                
                 multipart.addBodyPart(messageBodyPart);  
                 msg.setContent(multipart);         
                 requestLog.log(Level.INFO, "Log file attached: {0}", fileLog);                
@@ -220,5 +244,33 @@ public class LibisinUtil {
             System.exit(-1);
         }
     }
+    
+    public void compressFile(File file, String zipFileName) {
+        try {
+            //create ZipOutputStream to write to the zip file
+            FileOutputStream fos = new FileOutputStream(zipFileName);
+            ZipOutputStream zos = new ZipOutputStream(fos);
+            //add a new Zip Entry to the ZipOutputStream
+            ZipEntry ze = new ZipEntry(file.getName());
+            zos.putNextEntry(ze);
+            //read the file and write to ZipOutputStream
+            FileInputStream fis = new FileInputStream(file);
+            byte[] buffer = new byte[1024];
+            int len;
+            while ((len = fis.read(buffer)) > 0) {
+                zos.write(buffer, 0, len);
+            }
+             
+            //Close the zip entry to write to zip file
+            zos.closeEntry();
+            //Close resources
+            zos.close();
+            fis.close();
+            fos.close();            
+             
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }    
        
 }

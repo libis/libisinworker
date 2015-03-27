@@ -264,9 +264,8 @@ public class OmekaData {
             if(object.get("tags") != null){
                 String tagsArray[] = object.get("tags").toString().split(";");
                 if(tagsArray.length > 0){
+                    this.requestLog.log(Level.INFO, "tags: {0} ", tagsArray);
                     for (String tag : tagsArray) {
-                        System.out.println("tag: "+tag);
-                        this.requestLog.log(Level.INFO, "tag: {0} ", tag);
                         JSONObject tagObject = new JSONObject();               
                         tagObject.put("name", tag);
                         tags.add(tagObject);
@@ -395,7 +394,7 @@ public class OmekaData {
                     elementIdToAdd = elementObject.get("element_id").toString();
                     elementSetIdToAdd = elementObject.get("set_id").toString();                        
  
-                    // If non collection record and object_id is available in the record received from dmt service                            
+                    // If non collection record and object_id/entity_id is available in the record received from dmt service                            
                     if(type_id != null && elementToFind2.equals(objectIdentifier)){
                             List existResponseList = this.recordExists(elementIdToAdd, element.get("text").toString());
                             // existResponseList.get(0) contains whether record exists in omeka or not.
@@ -1047,7 +1046,6 @@ public class OmekaData {
                             HttpClient httpclient = new DefaultHttpClient();
                             HttpResponse response = httpclient.execute(httpdelete);   
                             this.requestLog.log(Level.INFO, "Removing resource response: {0}", response);
-                            System.out.println(response);
 
                           } catch (IOException ex) {
                                 this.requestLog.log(Level.SEVERE, "Removing resources Exception: {0}", ex.getMessage());
@@ -1124,7 +1122,6 @@ public class OmekaData {
         
     public void setGeoLocation(String locationString){
         if(locationString.toLowerCase().contains("georeference".toLowerCase())){
-            System.out.println(locationString);
             this.requestLog.log(Level.INFO, "georeference information: {0}", locationString);
         }            
         else
