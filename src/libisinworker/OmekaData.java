@@ -154,7 +154,7 @@ public class OmekaData {
                 }                    
                 else{
                     System.out.println("---->Valid record.");
-                    this.requestLog.log(Level.SEVERE, "Valid record");
+                    this.requestLog.log(Level.INFO, "Valid record");
                     this.validRecords ++;
                 }
                     
@@ -667,11 +667,13 @@ public class OmekaData {
                 return false;
             }            
             
+            /* Add locations if there are any */
             if(this.locations.size() > 0){
                 this.requestLog.log(Level.INFO, "Addig locations");                 
                 this.addLocation(responseString);                
             }
             
+            /* Add images if there are any */
             if(this.digitoolimages.size() > 0){
                 this.requestLog.log(Level.INFO, "Addig images"); 
                 this.addDigiToolImage(responseString);                                
@@ -716,16 +718,12 @@ public class OmekaData {
                 return false;
             }            
             
-            if(this.locations.size() > 0){
-                this.requestLog.log(Level.INFO, "Addig locations"); 
-                this.addLocation(responseString);                
-            }
+            /* Add locations. */
+            this.addLocation(responseString);                
             
-            if(this.digitoolimages.size() > 0){
-                this.requestLog.log(Level.INFO, "Addig images"); 
-                this.addDigiToolImage(responseString);                                
-            }
-                          
+            /* Add images. */
+            this.addDigiToolImage(responseString);                                
+ 
             return true;
             
         } catch (UnsupportedEncodingException ex) {
@@ -949,7 +947,7 @@ public class OmekaData {
         JSONArray responseBody = new JSONArray();
                
 	try {                    
-            URI uri = this.prepareRequst(resourceType,id, false, quereyParameters);             
+            URI uri = this.prepareRequst(resourceType,id, false, quereyParameters);      
             HttpGet httpget = new HttpGet(uri);
             HttpClient httpclient = new DefaultHttpClient();
             HttpResponse response = httpclient.execute(httpget);             
@@ -1056,9 +1054,16 @@ public class OmekaData {
         }
         else
             this.requestLog.log(Level.INFO, "Remove ' {0}' failed. Because no information exist in the database.", resourceType);
-
     }
             
+    /**
+     * Adds location to a record. 
+     * Currently only one location can be added in omeka.
+     * Before adding a new location, existing location is removed. 
+     * Location will be added if 'locations' variable is not empty. 
+     * In case it is empty existing location will be removed, leaving no location in omeka for this record.
+     * @param item
+     */
     public void addLocation(String item){
         try {
             JSONParser parser = new JSONParser();        
@@ -1067,9 +1072,14 @@ public class OmekaData {
                                 
                 //Remove existing location from omeka before adding a new one. 
                 //Currently, it is not possible to add multiple locations in omeka
-                this.removeResource(itemObj.get("id").toString(), "geo_location");              
+                this.removeResource(itemObj.get("id").toString(), "geo_location");
+
+                // Return if there are no locations to add 
+                if(this.locations.isEmpty())
+                    return;
                                 
-                System.out.println("---->Addig locations for: " + itemObj.get("id"));
+                this.requestLog.log(Level.INFO, "Addig locations for: {0}", itemObj.get("id"));
+                
                 for (GeoLocation geoLocation : this.locations) {
                     JSONObject locationObj = new JSONObject();
                     JSONObject itemObject = new JSONObject();
@@ -1135,7 +1145,7 @@ public class OmekaData {
         try {
             JSONParser parser = new JSONParser();        
             JSONArray locationArray = (JSONArray) parser.parse(locationString);
-            int counter = 1;
+            //int counter = 1;
             for (Object objectItem : locationArray) {
                 JSONObject geoLocation = (JSONObject) objectItem;
                 if(geoLocation.get("georeference") == null)
@@ -1154,7 +1164,7 @@ public class OmekaData {
                     this.locations.add(tempLocation);
 
                 tempLocation = null;                
-                counter ++;
+                //counter ++;
             }
             
         } catch (ParseException ex) {
@@ -1163,11 +1173,66 @@ public class OmekaData {
         }
     }    
     
+    /**
+     * Remove existing images related to a record
+     * @param itemId
+     * @return true if images deleted successfully otherwise false
+     */    
+    public boolean removeDigiToolImage(String itemId){
+        this.requestLog.log(Level.INFO, "{0}", String.format("Removing existing images for id: %s", itemId));                 
+        try {                                                     
+            URI uri = this.prepareRequst("digi_tool", null, true, null);             
+            this.requestLog.log(Level.INFO, "Remove image url: {0}", uri);
+            HttpPost httppost = new HttpPost(uri);
+            HttpClient httpclient = new DefaultHttpClient();            
+            httppost.setHeader("Content-type", "application/json");
+            
+            JSONObject imageObj = new JSONObject();
+            imageObj.put("item_id", itemId);
+            imageObj.put("pid", "delete");
+            imageObj.put("label", null);                       
+            httppost.setEntity(new StringEntity(imageObj.toString(), "UTF-8"));     
+            
+            HttpResponse response = httpclient.execute(httppost);
+            HttpEntity entityResponse= response.getEntity();
+            String responseString = EntityUtils.toString(entityResponse, "UTF-8");
+            
+            if(response.getStatusLine().getStatusCode() == 400 && responseString.contains("Deleted digitool-urls with item_id " + itemId)){
+                return true;
+            }                
+            else{
+                this.requestLog.log(Level.INFO, "Remove image failed. Response: {0}", responseString);
+                return false;
+            }
+                
+          } catch (IOException ex) {
+                this.requestLog.log(Level.SEVERE, "Remove image Exception: {0}", ex.getMessage());
+                return false;
+          }                                                             
+    }
+    
+    /**
+     * Add images to an omeka record
+     * All images are removed before adding new images
+     * Return if there are no images to add
+     * @param item
+     */
     public void addDigiToolImage(String item){
         try {        
             JSONParser parser = new JSONParser();
             JSONObject itemObj = (JSONObject) parser.parse(item);
             if(itemObj.get("id") != null){  
+                
+                boolean imageRemoved = this.removeDigiToolImage(itemObj.get("id").toString());
+                if(!imageRemoved)
+                    return;               
+               
+                /* Return if there are no images to add */
+                if(this.digitoolimages.isEmpty())                
+                    return;
+                
+                this.requestLog.log(Level.INFO, "Addig images for id {0}", itemObj.get("id").toString()); 
+                                
                 System.out.println("---->Addig image for: " + itemObj.get("id"));
                 for (DigiTool digiToolImage : this.digitoolimages) {                    
                     JSONObject imageObj = new JSONObject();
@@ -1242,13 +1307,36 @@ public class OmekaData {
             DigiTool image = new DigiTool();
             image.pid = pidString;
             this.digitoolimages.add(image);
-            image = null;
-                    
+            image = null;                    
         }
         else
             this.requestLog.log(Level.SEVERE, "Invalid digitool pid given: {0}", pidString);
     }
+    
+    /**
+     * Retrieve digitool records for the given item id
+     * Currently this method is only being used in unit tests
+     * @param itemId
+     * @return
+     */
+    public List getDigiToolPid(String itemId){          
+        Map<String,String> quereyParameters = new HashMap<>();
+        quereyParameters.put("item_id", itemId);         
         
+        JSONArray responseBody = (JSONArray)this.getResources("digi_tool", null, quereyParameters);
+        return responseBody;
+    }    
+        
+    /**
+     * Prepare http requst url
+     * @param apiType   request type corresponds to endpoints in omeka
+     * @param id     
+     * @param useKey    if true, key will be added to the url. Key is needed for POST and PUT request,  
+     *                  for example for adding items
+     * @param quereyParameters
+     * @return
+     */
+    
     public URI prepareRequst(String apiType, String id, boolean useKey, Map<String,String> quereyParameters){
         URIBuilder builder = new URIBuilder();
         URI uri = null;
@@ -1313,7 +1401,6 @@ public class OmekaData {
             this.requestLog.log(Level.SEVERE, "Prepare url Exception: {0}", ex.getMessage());
         }
         
-        this.requestLog.log(Level.INFO, "Prepare url: {0}", uri);
         return uri;
     }
         
