@@ -27,7 +27,7 @@ public class OmekaDataTest extends TestCase {
         this.libisinInit();
     }
     
-    /* Initialize libisinwork */
+    /* Initialize libisinworker */
     private void libisinInit(){
         LibisinUtil libisinUtils = new LibisinUtil();
         this.worker = new Libisinworker();

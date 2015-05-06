@@ -272,5 +272,15 @@ public class LibisinUtil {
             e.printStackTrace();
         }
     }    
+    
+  public boolean isValidJSON(String jsonString) {
+      Gson gson = new Gson();
+      try {
+          gson.fromJson(jsonString, Object.class);
+          return true;
+      } catch(com.google.gson.JsonSyntaxException ex) { 
+          return false;
+      }
+  }
        
 }
