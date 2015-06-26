@@ -13,11 +13,17 @@ import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.util.HashMap;
+import java.util.Map;
 
 import java.util.Properties;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.apache.commons.io.FileUtils;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
 
 
 
@@ -158,7 +164,65 @@ public class Cadata {
             this.requestLog.log(Level.SEVERE, "Collective Access record retrieval temp file not available: {0}", ex.getStackTrace());
             return null;
         }
-    }
+    }       
     
+    //temp_start
+
+    //todo: add logging
+    /**
+     * Get relationship types information from collective access with a rest api call.
+     * @param caServerConfig
+     * @param requestDirectory
+     * @return
+     */
+        public Map<String, String> getTypes(Properties caServerConfig, String requestDirectory){
+            LibisinUtil libisinUtils = new LibisinUtil();
+            Map<String,String> typesMap = new HashMap<>(); 
+            ClientConfig config = new DefaultClientConfig();
+            Client client = Client.create(config);
+            client.addFilter(new HTTPBasicAuthFilter(caServerConfig.getProperty("ca_user_id"), caServerConfig.getProperty("ca_user_password")));  
+
+            String url = "http://" + caServerConfig.getProperty("ca_server") 
+                    + "/" + caServerConfig.getProperty("ca_base_path") + "/model/ca_objects";           
+            WebResource webResource = client.resource(url);                        
+            ClientResponse response = webResource.type("application/json").get(ClientResponse.class);
+            String output = response.getEntity(String.class);
+            
+            if(response.getStatus() == 200){
+                try {
+                    libisinUtils.writeFile(requestDirectory + "/types.json", output, false);
+
+                    JSONParser parser = new JSONParser();            
+                    JSONObject responseBodyobj = (JSONObject) parser.parse(output);
+                    Set<String> keySet = responseBodyobj.keySet();
+                    for(String s: keySet){
+                        if(s.toLowerCase().equals("ok"))
+                            continue;
+
+                            JSONObject subObject = (JSONObject)responseBodyobj.get(s);
+                            if(subObject.containsKey("relationship_types")){
+                                JSONObject typeObject = (JSONObject)subObject.get("relationship_types");
+                                Set<String> subKeySet = typeObject.keySet();
+                                for(String subKey: subKeySet){
+                                    JSONObject elementObject = (JSONObject)typeObject.get(subKey);                                
+                                    Set<String> elementKeySet = elementObject.keySet();
+                                    for(String elementKey: elementKeySet){
+                                        JSONObject elementSubObject = (JSONObject)elementObject.get(elementKey);
+                                        if(!typesMap.containsKey(elementSubObject.get("type_id").toString())){
+                                            typesMap.put(elementSubObject.get("type_id").toString(), elementSubObject.get("typename").toString());                                    
+                                        }                                        
+                                    }                                
+                                }                            
+                            }                                                
+                    }
+
+                } catch (ParseException ex) {
+                    this.requestLog.log(Level.SEVERE, "Collective Access relationship type information retrieval failed: {0}", ex.getMessage());
+                    return null;
+                }            
+            }
+           return typesMap;
+    }    
+
        
 }

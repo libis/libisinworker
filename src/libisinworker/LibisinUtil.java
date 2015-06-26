@@ -14,6 +14,9 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.Properties;
 import java.util.logging.FileHandler;
 import java.util.logging.Handler;
@@ -36,6 +39,7 @@ import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
 import org.apache.commons.io.FilenameUtils;
+import org.json.simple.JSONObject;
 
 /**
  *
@@ -281,6 +285,16 @@ public class LibisinUtil {
       } catch(com.google.gson.JsonSyntaxException ex) { 
           return false;
       }
+  }
+  
+  public Map<String,String> jsontoArray(JSONObject object){
+    Map<String,String> array = new HashMap<>();      
+    Iterator iterator = object.keySet().iterator();
+    while(iterator.hasNext()) {
+        String key = (String) iterator.next();
+        array.put(key, object.get(key).toString());
+    }     
+    return array;
   }
        
 }

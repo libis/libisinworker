@@ -182,6 +182,12 @@ public class Libisinworker {
                                                 
                 if(omekaData.length() > 0) {
                     requestLog.log(Level.INFO, "DMT fetch successfull. Length of omeka data to add/update: {0} characters", omekaData.length());
+                    
+                    ///temp_start
+                    /* Prepare a list of elements with their relationship types. */
+                    omekaRecords.normalizeDmtData(object.get("bundle").toString(), setData.getTypes(caServerConfig, requestDirectory));
+                    ///temp_end
+                                        
                     boolean omekaSuccess = omekaRecords.pushDataToOmeka(omekaData, object.get("record_type").toString(), 
                             requestDirectory, object.get("set_name").toString());
                     if(omekaSuccess == true){
@@ -215,7 +221,7 @@ public class Libisinworker {
         }        
 
     }
-    
+            
     public void prepareReport(String setName, OmekaData omekaRecord, String reportFile, LibisinUtil libisinUtils){
         String report = "Set Name: " + setName + ", Total Records: " + omekaRecord.totalRecords + "\n" 
                 + "Valid Records: " + omekaRecord.validRecords + ", Invalid Records: "+ omekaRecord.invalidRecords +"\n" 

@@ -50,12 +50,15 @@ public class OmekaData {
     
     public JSONObject omekaElements;
     
+    public JSONObject typeRelationshipObject;    
+    
     
     public OmekaData(Properties omekaServerConfig){
         this.omekaServerConfig = omekaServerConfig;       
         this.libisinUtils = new LibisinUtil();
         this.locations = new ArrayList<>();
-        this.digitoolimages = new ArrayList<>();                
+        this.digitoolimages = new ArrayList<>();    
+        this.typeRelationshipObject = new JSONObject();
     }
         
     public boolean pushDataToOmeka(String records, String setRecordsType, String requestDirectory, String setName) throws IOException{
@@ -302,7 +305,24 @@ public class OmekaData {
             /* Find elements from correct name space. Element name should contain namespace, that is ':'. */
             if(elementName.contains(":")){
                 String[] splitName = elementName.split(":");  
-
+               
+            //temp_start
+            //TODO: make it configureable. Write tests. 
+            /* Add relationship type to the original value of the element. */
+            boolean addRelationshipType = true; 
+            //if types are to be added, add them here            
+            if(addRelationshipType == true && typeRelationshipObject != null ){                
+                if(typeRelationshipObject.containsKey(elementName.toLowerCase())){
+                    String originalValue = element.get("text").toString();                         
+                    String types = typeRelationshipObject.get(elementName.toLowerCase()).toString();    
+                    String changedValue = originalValue + "(" + types.substring(1, types.length()-1) + ")";                    
+                    element.put("text", changedValue);
+                }                
+            }          
+            //temp_end                  
+                
+                
+                
                 /* Set geolocation values. These values will be used later once object has been added or updated. */
                 if(splitName[0].equals("geolocation") && libisinUtils.capitalizeFirstLetter(splitName[1]).equals("Address")){
                     System.out.println("---->Processing geolocation for type " + setRecordsType);
@@ -1403,6 +1423,74 @@ public class OmekaData {
         
         return uri;
     }
-        
+            
+    ///temp_start
+
+    /**
+     * Prepare a list (typeRelationshipObject) containing element name and its relationship type(s). 
+     * This list is used later while preparing Omeka records for update/add api call. 
+     * @param displayBundle
+     * @param typesMap
+     */
+        public void normalizeDmtData(String displayBundle, Map<String, String> typesMap){
+            try {    
+                JSONParser parser = new JSONParser();                     
+                JSONObject bundleObj = (JSONObject)parser.parse(displayBundle);
+                JSONObject bundleBodyobj = (JSONObject)bundleObj.get("bundles");
+
+                Map<String,String> bundleArray = new HashMap<>();                                                
+                bundleArray = libisinUtils.jsontoArray(bundleBodyobj);
+                for(String key : bundleArray.keySet()){                
+
+                    Map<String, String> bundleElement = libisinUtils.jsontoArray((JSONObject)parser.parse(bundleArray.get(key)));                
+                    for(String elementKey : bundleElement.keySet()){    
+                        if(elementKey.equals("template")){
+                            String keyValue = bundleElement.get(elementKey);                        
+                                String tempArrayOne[] = keyValue.split("%");  //delimiter used for type restrictions
+                                for (String tempValue : tempArrayOne) {
+                                    if(tempValue.contains("restrictToRelationshipTypes")){
+                                        String tempArrayTwo[] = tempValue.split("=");
+                                        String typeKey = tempArrayTwo[0];
+                                        String typeValue = tempArrayTwo[1];
+                                        String typeValues[] = typeValue.split("\\|"); // type restriction values delimiter                                   
+                                        List<String> typeValuesList = new ArrayList<String>();                                    
+                                        for(String s: typeValues){
+                                            if(typesMap != null && typesMap.containsKey(s))
+                                                typeValuesList.add(typesMap.get(s));  
+                                        }
+
+                                        if(typeKey.equals("restrictToRelationshipTypes"))
+                                            typeRelationshipObject.put(key, typeValuesList);                                                                      
+                                    }                                  
+                                }                                                                                                                                                        
+                        }
+                    }                
+                }            
+
+            } catch (ParseException ex) {
+                this.requestLog.log(Level.SEVERE, "DMT data normalization failed: {0}", ex.getMessage());
+            }
+    }    
+            
+    public String normalizeDmtJson(String strObject, JSONObject types){
+        String dmtObject = strObject;
+        try {
+            JSONParser parser = new JSONParser();            
+            JSONArray messageBodyobj = (JSONArray) parser.parse(strObject);
+            for(int i=0; i< messageBodyobj.size(); i++){
+                JSONObject object = (JSONObject)messageBodyobj.get(i);
+                JSONArray objectElementsArray = (JSONArray) object.get("element_texts");
+                for (Object objectElement : objectElementsArray) {
+                    JSONObject element = (JSONObject) objectElement;
+                    String elementText = element.get("text").toString();
+                }
+            }
+            return dmtObject;
+        } catch (ParseException ex) {
+        }        
+        return dmtObject;
+    }    
+    
+    ///temp_end
     
 }
