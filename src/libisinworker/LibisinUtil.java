@@ -8,14 +8,20 @@ import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.logging.FileHandler;
@@ -38,7 +44,12 @@ import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
+import org.apache.commons.configuration.ConfigurationException;
+import org.apache.commons.configuration.HierarchicalConfiguration;
+import org.apache.commons.configuration.XMLConfiguration;
+import org.apache.commons.configuration.tree.xpath.XPathExpressionEngine;
 import org.apache.commons.io.FilenameUtils;
+import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 
 /**
@@ -295,5 +306,73 @@ public class LibisinUtil {
     }     
     return array;
   }
+  
+    /* Configuration utilities. */
+    
+    public JSONObject loadConfigurations(){
+        List<String> configurationFiles = this.getConfFiles();
+        JSONObject jConfig = new JSONObject();
+        if(configurationFiles.isEmpty()){
+            System.out.println("No configuration file found. Quiting.");  
+            System.exit(-1);
+        }
+        else{
+            for(String confFile : configurationFiles){                   
+                JSONObject jModule = this.getConfProperties(confFile);
+                if(jModule.size() > 0){
+                    jConfig.put(FilenameUtils.getBaseName(confFile), jModule);
+                }                                
+            }            
+        }   
+        return jConfig;
+    }
+    
+    public List<String> getConfFiles(){
+        List<String> configurationFiles = new ArrayList<>();
+        File resourceDir = new File(System.getProperty("user.dir")+"/src/resources/configurations"); 
+        File[] files = resourceDir.listFiles();
+        for (File file : files) {
+            if (file.isFile()) {
+                configurationFiles.add(file.getAbsolutePath());
+            } 			
+        }        
+        return configurationFiles;
+    }      
+    
+    public JSONObject getConfProperties(String confFile){
+        JSONObject jConfigTypes = new JSONObject();
+        try {
+            String [] configTypes = {"local","sandbox", "production"};
+            String [] servers = {"collectiveaccess","omeka","queuingserver","dmtservice"};
+            
+            String moduleKey = FilenameUtils.getBaseName(confFile);
+            
+            XMLConfiguration config = new XMLConfiguration(confFile);
+            config.setExpressionEngine(new XPathExpressionEngine());                                 
+                                    
+            for(String strType : configTypes){         
+                
+                JSONObject jServers = new JSONObject();                
+                for(String strServer : servers){
+                    final List<HierarchicalConfiguration> properties = config.configurationsAt(moduleKey + "/" + strType + "/" + strServer);       
+                    if(properties != null && properties.size() > 0){
+                        Iterator<String> keys = properties.get(0).getKeys();
+                        JSONObject jProp = new JSONObject();
+                        while(keys.hasNext()){
+                            Object element = keys.next();
+                            jProp.put(element.toString(), properties.get(0).getString(element.toString()));                            
+                        }
+                      jServers.put(strServer, jProp);                        
+                    }
+                }
+                if(jServers.size() > 0)
+                    jConfigTypes.put(strType, jServers);
+            }                      
+            
+        } catch (ConfigurationException ex) {                       
+        }
+                
+        return jConfigTypes;
+    }
   
 }

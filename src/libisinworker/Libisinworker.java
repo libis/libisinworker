@@ -38,6 +38,13 @@ public class Libisinworker {
         Logger serverLog = libisinUtils.createLogger(null, Libisinworker.class.getName());
                         
         Libisinworker worker = new Libisinworker();
+		
+        //temp_start       
+        /* Load all configurations of all modules. */
+        JSONObject jConfig = libisinUtils.loadConfigurations();
+        System.out.println(jConfig);        
+        //temp_end 		
+		
         Properties queuingServerConfig = worker.getConfigurations("queuingserver", serverLog);
         Properties caServerConfig = worker.getConfigurations("caserver", serverLog);
         Properties dmtServiceConfig = worker.getConfigurations("dmtservice", serverLog);
