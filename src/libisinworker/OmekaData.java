@@ -68,7 +68,7 @@ public class OmekaData {
             JSONParser parser = new JSONParser();                       
             JSONArray messageBodyobj = (JSONArray) parser.parse(records);
             String type_id = null;                        
-            
+                        
             this.totalRecords = messageBodyobj.size();
             this.validRecords = 0;
             this.invalidRecords = 0;
@@ -78,14 +78,13 @@ public class OmekaData {
             
             this.requestLog.log(Level.INFO, "Total records: {0}", messageBodyobj.size());
             System.out.println("-->Total records: " + messageBodyobj.size());
-            
             for(int i=0; i< messageBodyobj.size(); i++){ 
                 System.out.println("--->Processing record: " + (i+1));
                 this.requestLog.log(Level.INFO, "Processing record: {0}", (i+1));
                 JSONObject object = (JSONObject)messageBodyobj.get(i);  
                 
-                String type_identifier = "";
-                
+                //String type_identifier = "";
+                                
                 Boolean isValidRecord = false;
                 String urlType = null;
                 this.requestLog.log(Level.INFO, "record Type: {0}", setRecordsType);                
@@ -120,6 +119,12 @@ public class OmekaData {
                     case "entiteiten":
                     case "gebeurtenissen":
                     case "occurrences":
+                    case "storage locations":
+                    case "bewaarplaatsen":
+                    case "places":
+                    case "plaatsen":
+                    case "list items":                        
+                    case "lijstitems":                        
                         urlType = "item";
                         if(object.get("item_type") != null){
                                                                                    
@@ -238,8 +243,7 @@ public class OmekaData {
      */ 
     public  List processRecords(JSONObject object, String type_id, String setRecordsType){
         List responseList = new ArrayList();
-        //String objectIdentifier = libisinUtils.capitalizeFirstLetter(this.omekaServerConfig.getProperty("object_identifier"));             
-        String digitToolElement = libisinUtils.capitalizeFirstLetter(this.omekaServerConfig.getProperty("digitoolelement"));
+        String digitToolElement = this.omekaServerConfig.getProperty("digitoolelement");
         
         String objectIdentifier = "";        
         
@@ -250,8 +254,18 @@ public class OmekaData {
             item_type.put("id", type_id);
             object.put("item_type", item_type);     
             
+           
+            /* 
+            Java property does not allow to use white space between multiple words 
+            of a property name.For example, property for record type 
+            'storage locations' cannot be defined as "storage locations_identifier = archive id".
+            Therefore we convert these spaces to underscore character. Thus we define
+            "storage_locations_identifier = archive id" in property file, and we search
+            for 'storage_locations' instead of 'storage locations'.
+            */
+            setRecordsType = setRecordsType.replaceAll(" ", "_");
 
-            objectIdentifier = this.omekaServerConfig.getProperty(setRecordsType+"_identifier");
+            objectIdentifier = this.omekaServerConfig.getProperty(setRecordsType+"_identifier");            
             if(objectIdentifier !=  null && objectIdentifier.length() > 1){
                 objectIdentifier = objectIdentifier.substring(0, 1).toUpperCase() + objectIdentifier.substring(1); 
                 this.requestLog.log(Level.INFO, "Type identifier :'" + setRecordsType + "_identifier'  found: "+ objectIdentifier +".");                  
@@ -307,8 +321,10 @@ public class OmekaData {
                 String[] splitName = elementName.split(":");  
                
             //temp_start
+            // Disabled temporary, untill it is complete
             //TODO: make it configureable. Write tests. 
             /* Add relationship type to the original value of the element. */
+            /*    
             boolean addRelationshipType = true; 
             //if types are to be added, add them here            
             if(addRelationshipType == true && typeRelationshipObject != null ){                
@@ -318,7 +334,7 @@ public class OmekaData {
                     String changedValue = originalValue + "(" + types.substring(1, types.length()-1) + ")";                    
                     element.put("text", changedValue);
                 }                
-            }          
+            }    */      
             //temp_end                  
                 
                 
@@ -331,8 +347,17 @@ public class OmekaData {
                                                                               
                     if(element.get("text") != null){
                         
-                        // Entities have different data for georeference
-                        if(setRecordsType.equals("entiteiten")){                           
+                        /* Entities and Places have different data for georeference.
+                           Unlike objects, they have data in latitude and longitude.
+                           Furthermore, we only process georeference information 
+                           when only one pair of latitude and longitude is given. 
+                           For items where multiple pairs are given, we skip them.
+                           Reason being no support for drawing a multi latitude, longitude 
+                           location in Omeka.
+                        */
+                        if(setRecordsType.equals("entiteiten") || setRecordsType.equals("entities")
+                            || setRecordsType.equals("places") || setRecordsType.equals("plaatsen")
+                                ){                           
                             String geoReferenceData = element.get("text").toString();
                             Pattern p = Pattern.compile("\\[([^]]*)\\]");
                             Matcher m = p.matcher(geoReferenceData);
@@ -369,19 +394,15 @@ public class OmekaData {
                     namespaceToFind = "dc";                
 
                 if(this.omekaElements.containsKey(namespaceToFind.toLowerCase()))
-                {                       
-                    //String elementToFind2 = libisinUtils.capitalizeFirstLetter(splitName[1]);   
-                    
+                {                                          
                     String elementToFind2 = "";
                     if(namespaceToFind.toLowerCase().equals("dc"))
                         elementToFind2 = libisinUtils.capitalizeFirstLetter(splitName[1]);
                     else
-                        elementToFind2 = splitName[1].substring(0, 1).toUpperCase() + splitName[1].substring(1);
-                    
-                        
+                        elementToFind2 = splitName[1].substring(0, 1).toUpperCase() + splitName[1].substring(1);                    
 
-                        /* Digitool urls */
-                    if(elementToFind2.equals(digitToolElement))
+                    /* Digitool urls. Case insenstive. */
+                    if(elementToFind2.toLowerCase().equals(digitToolElement.toLowerCase()))
                     {
                         this.requestLog.log(Level.INFO, "---->Processing digitool"); 
                         if(element.get("text") != null)                                                                             
@@ -393,8 +414,8 @@ public class OmekaData {
                         continue;                                
                     }                        
 
-                    JSONObject elementTypeJsonObject = (JSONObject)this.omekaElements.get(namespaceToFind);
-                    JSONObject elementJsonObject = (JSONObject)elementTypeJsonObject.get("elements");
+                    JSONObject elementTypeJsonObject = (JSONObject)this.omekaElements.get(namespaceToFind.toLowerCase());
+                    JSONObject elementJsonObject = (JSONObject)elementTypeJsonObject.get("elements");                    
                     if(!elementJsonObject.containsKey(elementToFind2)){
                         this.requestLog.log(Level.SEVERE, "{0}", String.format("Element '%s' not found in namespace(set) %s", elementToFind2, namespaceToFind)); 
                         element.clear();                                                                                                               
@@ -414,8 +435,9 @@ public class OmekaData {
                     elementIdToAdd = elementObject.get("element_id").toString();
                     elementSetIdToAdd = elementObject.get("set_id").toString();                        
  
-                    // If non collection record and object_id/entity_id is available in the record received from dmt service                            
-                    if(type_id != null && elementToFind2.equals(objectIdentifier)){
+                    // If non collection record and object_id/entity_id is available in the record received from dmt service
+                    // type id is not case senstive
+                    if(type_id != null && elementToFind2.toLowerCase().equals(objectIdentifier.toLowerCase())){
                             List existResponseList = this.recordExists(elementIdToAdd, element.get("text").toString());
                             // existResponseList.get(0) contains whether record exists in omeka or not.
                             // Possible values are: true, false or null. 
@@ -597,6 +619,8 @@ public class OmekaData {
             JSONParser parser = new JSONParser();
             JSONObject messageBody = (JSONObject) parser.parse(EntityUtils.toString(entity, "UTF-8"));
 
+            this.requestLog.log(Level.INFO, "Record exists check url: {0}", uri);  
+            
             //Note: Browsing items gives only public items, that means for items with private settings we will not
             //be able to find if item exists or not. 
             if(messageBody.get("items") != null){
@@ -967,7 +991,7 @@ public class OmekaData {
         JSONArray responseBody = new JSONArray();
                
 	try {                    
-            URI uri = this.prepareRequst(resourceType,id, false, quereyParameters);      
+            URI uri = this.prepareRequst(resourceType,id, false, quereyParameters);                            
             HttpGet httpget = new HttpGet(uri);
             HttpClient httpclient = new DefaultHttpClient();
             HttpResponse response = httpclient.execute(httpget);             

@@ -49,7 +49,6 @@ public class LibisinUtil {
          
     public String writeFile(String filePath, String content, boolean append){       
         try {
-            System.out.println("Write file: " + filePath);
             File file = new File(filePath);
             FileWriter fwContent = new FileWriter(file.getAbsoluteFile(), append);
             BufferedWriter bwContent = new BufferedWriter(fwContent);
@@ -296,5 +295,5 @@ public class LibisinUtil {
     }     
     return array;
   }
-       
+  
 }

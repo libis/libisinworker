@@ -5,14 +5,19 @@ import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.QueueingConsumer;
 import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.URISyntaxException;
 import java.sql.Timestamp;
 import java.text.DecimalFormat;
 import java.util.Date;
+import java.util.List;
 import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import org.apache.commons.io.FilenameUtils;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject; 
 import org.json.simple.parser.JSONParser; 
@@ -28,8 +33,7 @@ public class Libisinworker {
      * @param args the command line arguments
      */
     public static void main(String[] args) throws IOException, InterruptedException, ParseException, URISyntaxException {    
-        
-        
+              
         LibisinUtil libisinUtils = new LibisinUtil();       
         Logger serverLog = libisinUtils.createLogger(null, Libisinworker.class.getName());
                         
@@ -42,16 +46,16 @@ public class Libisinworker {
        
         Connection connection = worker.connectQueuingServer(queuingServerConfig, serverLog);
         Channel channel = connection.createChannel();        
-        channel.queueDeclare(queuingServerConfig.getProperty("rmq_queue_name"), false, false, false, null);
+        channel.queueDeclare(queuingServerConfig.getProperty("rmq_queue_name").trim(), false, false, false, null);
                 
         QueueingConsumer consumer = new QueueingConsumer(channel);        
-        channel.basicConsume(queuingServerConfig.getProperty("rmq_queue_name"), true, consumer);    
+        channel.basicConsume(queuingServerConfig.getProperty("rmq_queue_name").trim(), true, consumer);    
                  
         String connectionMessage = "Connection established to: \n" 
             + "---------  \n"
             + "server: " + queuingServerConfig.getProperty("rmq_server") + " \n"
             + "port: " + queuingServerConfig.getProperty("rmq_port") + " \n"
-            + "Queue: " + queuingServerConfig.getProperty("rmq_queue_name") + " \n"
+            + "Queue: " + queuingServerConfig.getProperty("rmq_queue_name").trim() + " \n"
             + "Consumer tag: " + consumer.getConsumerTag() + " \n"
             + "Startup time: " + (new Date()) + " \n"
             + "user: " + queuingServerConfig.getProperty("rmq_id") + " \n"
@@ -59,8 +63,7 @@ public class Libisinworker {
         
         System.out.println(connectionMessage);        
         serverLog.log(Level.INFO, connectionMessage);
-        
-        
+                
         String omekaBaseUrl = omekaServiceConfig.getProperty("omeka_url_base");
         String omeka = omekaBaseUrl.substring(0,omekaBaseUrl.lastIndexOf("/index.php"));
         serverLog.log(Level.INFO, "Omeka server: http://{0}", omeka);
@@ -85,7 +88,7 @@ public class Libisinworker {
         JSONParser parser = new JSONParser();
         Cadata setData = new Cadata();
         DmtService dmtService = new DmtService();
-        OmekaData omekaRecords = new OmekaData(omekaServiceConfig);
+        OmekaData omekaRecords = new OmekaData(omekaServiceConfig);      
                         
         while (true) {            
             QueueingConsumer.Delivery delivery = consumer.nextDelivery();
@@ -94,7 +97,7 @@ public class Libisinworker {
             JSONObject messageBodyobj = (JSONObject) parser.parse(message); 
             
             // Worker can handel request messages and command messages
-            // Stops worker gracefully against command message
+            // Stop worker gracefully against command message
             // Command message structure should be like {"name":"libisinworker","command":"stop"}
             if(messageBodyobj.containsKey("command".toLowerCase()) &&
                     messageBodyobj.containsKey("name".toLowerCase())){
@@ -133,7 +136,8 @@ public class Libisinworker {
             
             //Prepare list of omeka elements, this list will be used for each record.
             System.out.println("--->Collecting omeka elements information.");
-            omekaRecords.omekaElements = omekaRecords.getTypesElements(); 
+            serverLog.log(Level.INFO, "Collecting omeka elements information.");
+            omekaRecords.omekaElements = omekaRecords.getTypesElements();             
             
             System.out.println("+---------------------------");
             Timestamp requestT1 = new Timestamp(new java.util.Date().getTime());
@@ -178,16 +182,16 @@ public class Libisinworker {
                 requestLog.log(Level.INFO, "DMT mapping request id: {0}", dmtRequestId);
                             
                 ////fetch mapping result
-                String omekaData = dmtService.fetchOmekaDmt(dmtRequestId, dmtServiceConfig);      
-                                                
+                String omekaData = dmtService.fetchOmekaDmt(dmtRequestId, dmtServiceConfig);                                                                                                      
                 if(omekaData.length() > 0) {
                     requestLog.log(Level.INFO, "DMT fetch successfull. Length of omeka data to add/update: {0} characters", omekaData.length());
                     
                     ///temp_start
+                    // Disabled temporary, untill it is complete
                     /* Prepare a list of elements with their relationship types. */
-                    omekaRecords.normalizeDmtData(object.get("bundle").toString(), setData.getTypes(caServerConfig, requestDirectory));
+                    //omekaRecords.normalizeDmtData(object.get("bundle").toString(), setData.getTypes(caServerConfig, requestDirectory));
                     ///temp_end
-                                        
+                    
                     boolean omekaSuccess = omekaRecords.pushDataToOmeka(omekaData, object.get("record_type").toString(), 
                             requestDirectory, object.get("set_name").toString());
                     if(omekaSuccess == true){
@@ -257,22 +261,26 @@ public class Libisinworker {
         switch(configuratinFor){
             case "queuingserver":
                 //configFile = "queue_server_conf";             // local config
-                configFile = "remote_queue_server_conf";        // remote config
+                configFile = "remote_queue_server_conf";      // remote sandbox config
+                //configFile = "pr_queue_server_conf";            // production
                 break;
                 
             case "caserver":
                 //configFile = "ca_server_conf";
                 configFile = "remote_ca_server_conf";
+                //configFile = "pr_ca_server_conf";               // production
                 break;                
                 
             case "dmtservice":
                 //configFile = "dmt_service_conf";
                 configFile = "remote_dmt_service_conf";
+                //configFile = "pr_dmt_service_conf";            // production
                 break;                 
                 
             case "omekaserver":
                 //configFile = "omeka_server_conf";
                 configFile = "remote_omeka_server_conf";
+                //configFile = "pr_omeka_server_conf";          // production
                 break;   
 
             case "libisinworker":
@@ -280,8 +288,9 @@ public class Libisinworker {
                 break; 
         }
         
-        try {	                         
+        try {                        
             prop.load(this.getClass().getResourceAsStream("/resources/" + configFile + ".properties"));                       						
+            
         } catch (IOException | NullPointerException ex) {            
             serverLog.log(Level.SEVERE, "Error in reading configuration file for: {0}", configuratinFor);
             serverLog.log(Level.SEVERE, "File '{0}' not found", configFile);
@@ -291,5 +300,5 @@ public class Libisinworker {
         } 		  
         return prop; 		  
     }    
-    
+                      
 }
