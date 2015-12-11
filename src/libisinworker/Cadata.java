@@ -42,7 +42,7 @@ public class Cadata {
         client.addFilter(new HTTPBasicAuthFilter(caServerConfig.getProperty("ca_user_id"), caServerConfig.getProperty("ca_user_password")));    
 
         String endPoint = null;
-        switch(setRecordsType){
+        switch(setRecordsType.toLowerCase()){
             case "collecties":      
             case "collections":      
                 endPoint = caServerConfig.getProperty("ca_collection_path");
@@ -61,19 +61,34 @@ public class Cadata {
             case "gebeurtenissen":   
             case "occurrences":                    
                 endPoint = caServerConfig.getProperty("ca_occurrence_path");
-            break;                        
+            break;                    
+            
+            case "storage locations":
+            case "bewaarplaatsen":
+                endPoint = caServerConfig.getProperty("ca_storage_locations");
+                break;
+                
+            case "places":
+            case "plaatsen":
+                endPoint = caServerConfig.getProperty("ca_places");
+                break;                        
 
+            case "list items":
+            case "lijstitems":
+                endPoint = caServerConfig.getProperty("ca_list_items");
+                break;                
+                
             default:    /* Default endpoint is object  */
                 endPoint = caServerConfig.getProperty("ca_object_path"); 
         }       
             
         try {    
-            String setSearch = "set:\""+ setName +"\"";
+            String setSearch = "ca_sets.set_code:\""+ setName +"\"";
             String url = "http://" + caServerConfig.getProperty("ca_server") 
                     + "/" + caServerConfig.getProperty("ca_base_path") + "/" 
                     + endPoint
                     + "?q="+ URLEncoder.encode(setSearch, "UTF-8") +"&pretty=1&format=edit" ;                                                           
-
+            
             System.out.println("-->Processing set "+ setName);                       
             this.requestLog.log(Level.INFO, "Processing set: {0}", setName);
             this.requestLog.log(Level.INFO, "Collectieve Access rest api url: {0}", url);
