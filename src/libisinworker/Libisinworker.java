@@ -158,7 +158,7 @@ public class Libisinworker {
                                 
                 JSONObject object = (JSONObject)setInfoBodyArray.get(i);                                                
                 String mappingRules = object.get("mapping").toString();                              
-                String mappingFilePath = libisinUtils.writeFile(requestDirectory + "/mappingrules.csv", mappingRules, false);
+				String mappingFilePath = libisinUtils.writeFile(requestDirectory + "/mappingrules_"+object.get("set_name").toString()+".csv", mappingRules, false);				
                 serverLog.log(Level.INFO, "Mapping file: {0}", mappingFilePath);
                                 
                 ////retrieve records from collectiveaccess
