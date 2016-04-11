@@ -157,22 +157,35 @@ public class Libisinworker {
             for(int i=0; i< setInfoBodyArray.size(); i++){
                                 
                 JSONObject object = (JSONObject)setInfoBodyArray.get(i);                                                
-                String mappingRules = object.get("mapping").toString();                              
-				String mappingFilePath = libisinUtils.writeFile(requestDirectory + "/mappingrules_"+object.get("set_name").toString()+".csv", mappingRules, false);				
+                String mappingRules = object.get("mapping").toString();          
+                               
+                String mappingFilePath = libisinUtils.writeFile(requestDirectory + "/mappingrules_"+object.get("set_name").toString()+".csv", mappingRules, false);
                 serverLog.log(Level.INFO, "Mapping file: {0}", mappingFilePath);
-                                
-                ////retrieve records from collectiveaccess
-                String caRecordsFilePath = setData.getSetData(object.get("set_name").toString(),
-                        caServerConfig, object.get("bundle").toString(), object.get("record_type").toString(), requestDirectory); 
                 
-                if(caRecordsFilePath == null){
-                    System.out.println("Error in receiving data from Collective Access.");
-                    serverLog.log(Level.SEVERE, "Error in receiving data from Collective Access");
-                    requestLog.log(Level.SEVERE, "Error in receiving data from Collective Access");
-                    return;
-                }
-                requestLog.log(Level.INFO, "Collective Access records file: {0}", caRecordsFilePath);
+                // Inject non collective access calls
+                boolean isCollectiveAccessCall = false;
+                String caRecordsFilePath = "";
+                if(object.containsKey("collective_access_call"))
+                    isCollectiveAccessCall = Boolean.parseBoolean(object.get("collective_access_call").toString());
+                                
+                if(isCollectiveAccessCall == true)
+                {
+                    
+                    //retrieve records from collectiveaccess
+                    caRecordsFilePath = setData.getSetData(object.get("set_name").toString(),
+                            caServerConfig, object.get("bundle").toString(), object.get("record_type").toString(), requestDirectory); 
 
+                    if(caRecordsFilePath == null){
+                        System.out.println("Error in receiving data from Collective Access.");
+                        serverLog.log(Level.SEVERE, "Error in receiving data from Collective Access");
+                        continue;
+                    }
+                    requestLog.log(Level.INFO, "Collective Access records file: {0}", caRecordsFilePath);
+                
+                }
+                else
+                    caRecordsFilePath = libisinUtils.writeFile(requestDirectory + "/" +object.get("set_name").toString()+".json", object.get("data").toString(), false);
+                
                 ////send records to mapping service to map to omeka format               
                 String dmtMapResponse = dmtService.mapData(caRecordsFilePath, mappingFilePath, dmtServiceConfig);
                                
@@ -186,14 +199,9 @@ public class Libisinworker {
                 if(omekaData.length() > 0) {
                     requestLog.log(Level.INFO, "DMT fetch successfull. Length of omeka data to add/update: {0} characters", omekaData.length());
                     
-                    ///temp_start
-                    // Disabled temporary, untill it is complete
-                    /* Prepare a list of elements with their relationship types. */
-                    //omekaRecords.normalizeDmtData(object.get("bundle").toString(), setData.getTypes(caServerConfig, requestDirectory));
-                    ///temp_end
-                    
                     boolean omekaSuccess = omekaRecords.pushDataToOmeka(omekaData, object.get("record_type").toString(), 
                             requestDirectory, object.get("set_name").toString());
+
                     if(omekaSuccess == true){
                         requestLog.log(Level.INFO, "Records pushed to Omeka successfully");    
                         worker.prepareReport(object.get("set_name").toString(), omekaRecords,reportFile , libisinUtils);
@@ -260,26 +268,30 @@ public class Libisinworker {
         String configFile = "";
         switch(configuratinFor){
             case "queuingserver":
+                configFile = "lectio_remote_queue_server_conf";             // local config
+                
                 //configFile = "queue_server_conf";             // local config
-                configFile = "remote_queue_server_conf";      // remote sandbox config
+                //configFile = "remote_queue_server_conf";      // remote sandbox config
                 //configFile = "pr_queue_server_conf";            // production
                 break;
                 
             case "caserver":
-                //configFile = "ca_server_conf";
-                configFile = "remote_ca_server_conf";
+                configFile = "ca_server_conf";
+                //configFile = "remote_ca_server_conf";       
                 //configFile = "pr_ca_server_conf";               // production
                 break;                
                 
             case "dmtservice":
                 //configFile = "dmt_service_conf";
-                configFile = "remote_dmt_service_conf";
-                //configFile = "pr_dmt_service_conf";            // production
+                //configFile = "remote_dmt_service_conf";
+                configFile = "pr_dmt_service_conf";            // production
                 break;                 
                 
             case "omekaserver":
+                configFile = "lectio_remote_omeka_server_conf";
+                
                 //configFile = "omeka_server_conf";
-                configFile = "remote_omeka_server_conf";
+                //configFile = "remote_omeka_server_conf";
                 //configFile = "pr_omeka_server_conf";          // production
                 break;   
 
