@@ -176,7 +176,7 @@ public class OmekaData {
                     JSONObject omekaObject = (JSONObject)responeList.get(1);
                                          
                     this.requestLog.log(Level.INFO, "Omeka operation type: {0}", requestType);
-                    System.out.println(omekaObject);
+                    //System.out.println(omekaObject);
                     boolean success = false;
                     switch(requestType){
                         case "ADD":             
@@ -422,7 +422,7 @@ public class OmekaData {
                         continue;                                 
                     }
 
-                    this.requestLog.log(Level.INFO, "{0}", String.format("Element '%s' found in namespace(set) %s", elementToFind2, namespaceToFind)); 
+                    //this.requestLog.log(Level.INFO, "{0}", String.format("Element '%s' found in namespace(set) %s", elementToFind2, namespaceToFind)); 
                     JSONObject elementObject = (JSONObject)elementJsonObject.get(elementToFind2);
                     if(!elementObject.containsKey("element_id") || !elementObject.containsKey("set_id")){
                         this.requestLog.log(Level.SEVERE, "Error in getting information about element:{0}, movign to next element", elementToFind2);                             
@@ -701,8 +701,8 @@ public class OmekaData {
             HttpEntity entityResponse= response.getEntity();
             String responseString = EntityUtils.toString(entityResponse, "UTF-8");
                         
-            this.requestLog.log(Level.INFO, "--Add operation response code: {0}", response.getStatusLine().getStatusCode());
-            this.requestLog.log(Level.INFO, "--Add operation response: {0}", responseString);
+            //this.requestLog.log(Level.INFO, "--Add operation response code: {0}", response.getStatusLine().getStatusCode());
+            //this.requestLog.log(Level.INFO, "--Add operation response: {0}", responseString);
             
             if(response.getStatusLine().getStatusCode() != 201){
                 System.out.println("---->Add operation failed: " + responseString);
@@ -754,7 +754,7 @@ public class OmekaData {
             HttpResponse response = httpclient.execute(httpput);                               
             HttpEntity entityResponse= response.getEntity();
             String responseString = EntityUtils.toString(entityResponse, "UTF-8");
-            this.requestLog.log(Level.INFO, "--Update operation response: {0}", responseString);            
+            //this.requestLog.log(Level.INFO, "--Update operation response: {0}", responseString);            
             if(response.getStatusLine().getStatusCode() != 200){
                 System.out.println("---->Update operation failed: " + responseString);
                 this.requestLog.log(Level.SEVERE, "--Update operation failed(Message): {0}", responseString);
@@ -1386,7 +1386,7 @@ public class OmekaData {
         URI uri = null;
         String path = null;
 
-        builder.setScheme("http").setHost(this.omekaServerConfig.getProperty("omeka_url_base"));
+        builder.setScheme("https").setHost(this.omekaServerConfig.getProperty("omeka_url_base"));
         switch(apiType){
             case "item":
                 path = "/"+ this.omekaServerConfig.getProperty("url_item");               

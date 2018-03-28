@@ -84,7 +84,7 @@ public class Cadata {
             
         try {    
             String setSearch = "ca_sets.set_code:\""+ setName +"\"";
-            String url = "http://" + caServerConfig.getProperty("ca_server") 
+            String url = "https://" + caServerConfig.getProperty("ca_server") 
                     + "/" + caServerConfig.getProperty("ca_base_path") + "/" 
                     + endPoint
                     + "?q="+ URLEncoder.encode(setSearch, "UTF-8") +"&pretty=1&format=edit" ;                                                           
@@ -115,7 +115,7 @@ public class Cadata {
                     Here we download response of our api request from app/tmp directory.
                 */
 
-                String tempFileUrl = "http://" + caServerConfig.getProperty("ca_server") 
+                String tempFileUrl = "https://" + caServerConfig.getProperty("ca_server") 
                         + "/" + caServerConfig.getProperty("ca_base_path") + "/app/tmp/"+setName+".txt" ;  
                 tempFileUrl = tempFileUrl.replace("service.php/", "");
                 System.out.println("File to be downloaded from: " + tempFileUrl);     
@@ -197,7 +197,7 @@ public class Cadata {
             Client client = Client.create(config);
             client.addFilter(new HTTPBasicAuthFilter(caServerConfig.getProperty("ca_user_id"), caServerConfig.getProperty("ca_user_password")));  
 
-            String url = "http://" + caServerConfig.getProperty("ca_server") 
+            String url = "https://" + caServerConfig.getProperty("ca_server") 
                     + "/" + caServerConfig.getProperty("ca_base_path") + "/model/ca_objects";           
             WebResource webResource = client.resource(url);                        
             ClientResponse response = webResource.type("application/json").get(ClientResponse.class);

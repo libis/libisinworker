@@ -10,6 +10,20 @@
 <project name="libisinworker" default="default" basedir=".">
     <description>Builds, tests, and runs the project libisinworker.</description>
     <import file="nbproject/build-impl.xml"/>
+    
+    <target name="-post-jar" >    
+        <!-- We are keaping property files external to the jar file, 
+        so that if we update property files we do not need to bulid and run project again. -->
+<!--        <copy todir="${dist.dir}/src/resources/configurations">
+          <fileset dir="${src.dir}/resources/configurations">
+          </fileset>
+        </copy>-->
+        
+        <!-- Create log and files directory. -->
+        <mkdir dir="${dist.dir}/log"/>      
+        <mkdir dir="${dist.dir}/files"/>
+    </target>
+    
     <!--
 
     There exist several targets which are by default empty and which can be 

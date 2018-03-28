@@ -38,6 +38,24 @@ public class Libisinworker {
         Logger serverLog = libisinUtils.createLogger(null, Libisinworker.class.getName());
                         
         Libisinworker worker = new Libisinworker();
+
+        //temp_start
+//        for(int i=0; i<10; i++){;
+//            long millis = System.currentTimeMillis();
+//            System.out.println(millis);
+//        }
+//        for(int i=0; i<10; i++){
+//            String strNanoTime = Long.toString(System.nanoTime());
+//            System.out.println(strNanoTime);
+//        }
+        
+        /* Load all configurations of all modules. */
+//        JSONObject jConfig = libisinUtils.loadConfigurations();
+//        System.out.println(jConfig);        
+        //temp_end        
+
+        
+        
         Properties queuingServerConfig = worker.getConfigurations("queuingserver", serverLog);
         Properties caServerConfig = worker.getConfigurations("caserver", serverLog);
         Properties dmtServiceConfig = worker.getConfigurations("dmtservice", serverLog);
@@ -66,16 +84,16 @@ public class Libisinworker {
                 
         String omekaBaseUrl = omekaServiceConfig.getProperty("omeka_url_base");
         String omeka = omekaBaseUrl.substring(0,omekaBaseUrl.lastIndexOf("/index.php"));
-        serverLog.log(Level.INFO, "Omeka server: http://{0}", omeka);
+        serverLog.log(Level.INFO, "Omeka server: https://{0}", omeka);
 
         String dmtBaseUrl = dmtServiceConfig.getProperty("dmt_url_base");
         String mappingService = dmtBaseUrl.substring(0,dmtBaseUrl.lastIndexOf("/dmt.php"));
-        serverLog.log(Level.INFO, "DMT Service: http://{0}", mappingService);   
+        serverLog.log(Level.INFO, "DMT Service: https://{0}", mappingService);   
         
         String collectiveAccessBaseUrl = caServerConfig.getProperty("ca_server") 
                 +"/"+ caServerConfig.getProperty("ca_base_path");
         String collectiveAccess = collectiveAccessBaseUrl.substring(0,collectiveAccessBaseUrl.lastIndexOf("/service.php"));
-        serverLog.log(Level.INFO, "Collective Access server: http://{0}", collectiveAccess);         
+        serverLog.log(Level.INFO, "Collective Access server: https://{0}", collectiveAccess);         
         
         System.out.println("---------");
         System.out.println("Collective Access:  " + collectiveAccess);
@@ -157,22 +175,47 @@ public class Libisinworker {
             for(int i=0; i< setInfoBodyArray.size(); i++){
                                 
                 JSONObject object = (JSONObject)setInfoBodyArray.get(i);                                                
-                String mappingRules = object.get("mapping").toString();                              
-				String mappingFilePath = libisinUtils.writeFile(requestDirectory + "/mappingrules_"+object.get("set_name").toString()+".csv", mappingRules, false);				
+                String mappingRules = object.get("mapping").toString();          
+                               
+                //String mappingFilePath = libisinUtils.writeFile(requestDirectory + "/mappingrules.csv", mappingRules, false);
+                String mappingFilePath = libisinUtils.writeFile(requestDirectory + "/mappingrules_"+object.get("set_name").toString()+".csv", mappingRules, false);
                 serverLog.log(Level.INFO, "Mapping file: {0}", mappingFilePath);
-                                
-                ////retrieve records from collectiveaccess
-                String caRecordsFilePath = setData.getSetData(object.get("set_name").toString(),
-                        caServerConfig, object.get("bundle").toString(), object.get("record_type").toString(), requestDirectory); 
-                
-                if(caRecordsFilePath == null){
-                    System.out.println("Error in receiving data from Collective Access.");
-                    serverLog.log(Level.SEVERE, "Error in receiving data from Collective Access");
-                    requestLog.log(Level.SEVERE, "Error in receiving data from Collective Access");
-                    return;
-                }
-                requestLog.log(Level.INFO, "Collective Access records file: {0}", caRecordsFilePath);
 
+                String caRecordsFilePath = setData.getSetData(object.get("set_name").toString(),
+                        caServerConfig, object.get("bundle").toString(), object.get("record_type").toString(), requestDirectory);                
+                
+                //tmp_start
+                // Inject non collective access calls
+//                boolean isCollectiveAccessCall = false;
+//                String caRecordsFilePath = "";
+//                if(object.containsKey("collective_access_call"))
+//                    isCollectiveAccessCall = Boolean.parseBoolean(object.get("collective_access_call").toString());
+//                                
+//                if(isCollectiveAccessCall == true)
+//                {
+//                    
+//                    ////retrieve records from collectiveaccess
+////                    String caRecordsFilePath = setData.getSetData(object.get("set_name").toString(),
+////                            caServerConfig, object.get("bundle").toString(), object.get("record_type").toString(), requestDirectory); 
+//                    caRecordsFilePath = setData.getSetData(object.get("set_name").toString(),
+//                            caServerConfig, object.get("bundle").toString(), object.get("record_type").toString(), requestDirectory); 
+//
+//                    if(caRecordsFilePath == null){
+//                        System.out.println("Error in receiving data from Collective Access.");
+//                        serverLog.log(Level.SEVERE, "Error in receiving data from Collective Access");
+//                        //return;
+//                        //////**************
+//                        continue;
+//                        //SHOULD IT BE continue;****************
+//                        //////
+//                    }
+//                    requestLog.log(Level.INFO, "Collective Access records file: {0}", caRecordsFilePath);
+//                
+//                }
+//                else
+//                    caRecordsFilePath = libisinUtils.writeFile(requestDirectory + "/" +object.get("set_name").toString()+".json", object.get("data").toString(), false);
+                //temp_end
+                
                 ////send records to mapping service to map to omeka format               
                 String dmtMapResponse = dmtService.mapData(caRecordsFilePath, mappingFilePath, dmtServiceConfig);
                                
@@ -191,9 +234,10 @@ public class Libisinworker {
                     /* Prepare a list of elements with their relationship types. */
                     //omekaRecords.normalizeDmtData(object.get("bundle").toString(), setData.getTypes(caServerConfig, requestDirectory));
                     ///temp_end
-                    
+
                     boolean omekaSuccess = omekaRecords.pushDataToOmeka(omekaData, object.get("record_type").toString(), 
                             requestDirectory, object.get("set_name").toString());
+
                     if(omekaSuccess == true){
                         requestLog.log(Level.INFO, "Records pushed to Omeka successfully");    
                         worker.prepareReport(object.get("set_name").toString(), omekaRecords,reportFile , libisinUtils);
@@ -249,7 +293,7 @@ public class Libisinworker {
         } catch (IOException ex) {
             serverLog.log(Level.SEVERE, "Error in connecting queuing server: {0}", queuingServerConfig.getProperty("rmq_server"));
             serverLog.log(Level.SEVERE, "Exception Message: {0}", ex.getMessage());
-            System.out.println("Error in connecting queuing server: " + queuingServerConfig.getProperty("rmq_server"));
+            System.out.println("Error in connecting queuing server: " + queuingServerConfig.getProperty("rmq_server") +":" + queuingServerConfig.getProperty("rmq_port"));
             System.exit(-1);
         }
         return connection;
@@ -260,27 +304,31 @@ public class Libisinworker {
         String configFile = "";
         switch(configuratinFor){
             case "queuingserver":
+                //configFile = "lectio_remote_queue_server_conf";             // local config
+                
                 //configFile = "queue_server_conf";             // local config
-                configFile = "remote_queue_server_conf";      // remote sandbox config
-                //configFile = "pr_queue_server_conf";            // production
+                //configFile = "remote_queue_server_conf";      // remote sandbox config
+                configFile = "pr_queue_server_conf";            // production
                 break;
                 
             case "caserver":
                 //configFile = "ca_server_conf";
-                configFile = "remote_ca_server_conf";
-                //configFile = "pr_ca_server_conf";               // production
+                //configFile = "remote_ca_server_conf";       
+                configFile = "pr_ca_server_conf";               // production
                 break;                
                 
             case "dmtservice":
                 //configFile = "dmt_service_conf";
-                configFile = "remote_dmt_service_conf";
-                //configFile = "pr_dmt_service_conf";            // production
+                //configFile = "remote_dmt_service_conf";
+                configFile = "pr_dmt_service_conf";            // production
                 break;                 
                 
             case "omekaserver":
+                //configFile = "lectio_remote_omeka_server_conf";
+                
                 //configFile = "omeka_server_conf";
-                configFile = "remote_omeka_server_conf";
-                //configFile = "pr_omeka_server_conf";          // production
+                //configFile = "remote_omeka_server_conf";
+                configFile = "pr_omeka_server_conf";          // production
                 break;   
 
             case "libisinworker":
@@ -289,7 +337,10 @@ public class Libisinworker {
         }
         
         try {                        
-            prop.load(this.getClass().getResourceAsStream("/resources/" + configFile + ".properties"));                       						
+            //prop.load(this.getClass().getResourceAsStream("/resources/" + configFile + ".properties"));                       						
+            //String serverName = "cag";           
+            String serverName = "babtekst";           
+            prop.load(this.getClass().getResourceAsStream("/resources/" + serverName + "/" + configFile + ".properties"));
             
         } catch (IOException | NullPointerException ex) {            
             serverLog.log(Level.SEVERE, "Error in reading configuration file for: {0}", configuratinFor);
